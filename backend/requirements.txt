@@ -111,3 +111,4 @@ websockets==15.0.1
 xxhash==3.5.0
 zipp==3.23.0
 zstandard==0.24.0
+unstructured[pdf]
