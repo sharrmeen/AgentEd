@@ -8,3 +8,8 @@ __pycache__/
 
 # OS files
 .DS_Store
+
+venv/
+
+#chromadb
+backend/chroma_db/
