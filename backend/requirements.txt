@@ -112,3 +112,5 @@ xxhash==3.5.0
 zipp==3.23.0
 zstandard==0.24.0
 unstructured[pdf]
+pdf2image>=1.16.0
+PyPDF2>=4.0.0
