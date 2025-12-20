@@ -2,6 +2,13 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from contextlib import asynccontextmanager  # <--- NEW IMPORT
 
+#from dotenv import load_dotenv
+# backend/app/main.py
+from dotenv import load_dotenv
+import os
+
+load_dotenv()
+
 # Import your existing RAG service
 from app.services.rag_service import RAGService
 
