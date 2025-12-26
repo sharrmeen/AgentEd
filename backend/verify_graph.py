@@ -1,4 +1,4 @@
-from app.core.graph import app  
+from backend.app.agents.orchestration.graph import app  
 test_input = {
     "user_query": "I need a study plan for next week", 
     "messages": [],

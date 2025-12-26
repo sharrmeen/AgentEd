@@ -1,7 +1,7 @@
 # backend/app/services/rag_service.py
 """
 RAG Service - Unified interface combining ingestion and retrieval functionality.
-This module re-exports the separated ingestion and retrieval services for backward compatibility.
+This chapter re-exports the separated ingestion and retrieval services for backward compatibility.
 """
 
 from app.services.ingestion import IngestionService

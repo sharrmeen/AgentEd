@@ -1,7 +1,7 @@
 import cv2
 import pytesseract
 
-def extract_text_preprocessed(image_path):
+def extract_text(image_path):
     # Load image
     img = cv2.imread(image_path)
     if img is None:

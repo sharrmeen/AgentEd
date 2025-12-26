@@ -1,0 +1,2 @@
+export MAX_CHUNK_SIZE=1200
+export CHROMA_DB_DIRECTORY=/data/chroma_db

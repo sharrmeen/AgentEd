@@ -1,96 +1,155 @@
-from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
-from contextlib import asynccontextmanager  # <--- NEW IMPORT
+"""
+AgentEd Backend - Main FastAPI Application.
 
-#from dotenv import load_dotenv
-# backend/app/main.py
+Dual-layer architecture:
+- Service Layer: Pure business logic (stateless, testable)
+- Agent Layer: LangGraph orchestration for intelligent workflows
+
+API Routes:
+- /api/v1/* → Direct service calls (legacy)
+- /api/v2/* → Agent workflows (intelligent)
+
+Database:
+- MongoDB: Structured data, cache
+- ChromaDB: Vector embeddings for RAG
+"""
+
+from contextlib import asynccontextmanager
 from dotenv import load_dotenv
-import os
+from fastapi import FastAPI, HTTPException, status
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.trustedhost import TrustedHostMiddleware
+import logging
 
+from app.core.config import settings
+from app.core.database import db
+from app.api import api_router
+from app.schemas.common import HealthResponse
+
+# Load environment variables
 load_dotenv()
 
-# Import your existing RAG service
-from app.services.rag_service import RAGService
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-# --- NEW IMPORTS FOR DATABASE ---
-from app.core.database import db
-from app.core.models import StudentProfile
-from app.services.user_service import save_profile, get_profile
+# ============================
+# LIFESPAN - App Startup/Shutdown
+# ============================
 
-rag_service = RAGService()
-
-# -------------------------
-# 1. Lifespan (The Connection Manager)
-# -------------------------
-# This code runs before the app starts and after it stops.
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup: Connect to DB
-    db.connect()
+    """
+    Manage app lifecycle:
+    - Connect to databases on startup
+    - Initialize indexes
+    - Cleanup on shutdown
+    """
+    logger.info("🚀 Starting AgentEd Backend...")
+    
+    try:
+        # Connect to MongoDB
+        await db.connect()
+        logger.info("✅ MongoDB connected")
+        
+        # Initialize indexes
+        await db.init_indexes()
+        logger.info("✅ Indexes initialized")
+        
+    except Exception as e:
+        logger.error(f"❌ Startup failed: {str(e)}")
+        raise
+    
     yield
-    # Shutdown: Close DB
-    db.close()
+    
+    # Cleanup
+    logger.info("🛑 Shutting down AgentEd Backend...")
+    try:
+        await db.close()
+        logger.info("✅ MongoDB disconnected")
+    except Exception as e:
+        logger.error(f"❌ Shutdown error: {str(e)}")
+
+# ============================
+# CREATE FASTAPI APP
+# ============================
 
 app = FastAPI(
-    title="AgentEd Backend",
-    description="Backend API for AgentEd AI system",
-    version="0.1.0",
-    lifespan=lifespan  # <--- CRITICAL: Attach the lifespan here
+    title=settings.APP_NAME,
+    description="AI-powered study companion with multi-agent orchestration",
+    version=settings.APP_VERSION,
+    openapi_url="/api/openapi.json",
+    docs_url="/api/docs",
+    redoc_url="/api/redoc",
+    lifespan=lifespan
 )
 
-# -------------------------
-# Request / Response Models
-# -------------------------
+# ============================
+# MIDDLEWARE
+# ============================
 
-class QueryRequest(BaseModel):
-    user_id: str
-    query: str
+# CORS - Allow frontend to connect
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.CORS_ORIGINS,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+    expose_headers=["content-length", "content-range"]
+)
 
-class QueryResponse(BaseModel):
-    response: str
+# Trusted Host
+app.add_middleware(
+    TrustedHostMiddleware,
+    allowed_hosts=["localhost", "127.0.0.1", "*.example.com"]
+)
 
+# ============================
+# ROUTES
+# ============================
 
-# -------------------------
-# Health Check
-# -------------------------
-
-@app.get("/")
-def health_check():
-    return {"status": "AgentEd backend is running"}
-
-
-# -------------------------
-# 2. NEW: User Setup Endpoints
-# -------------------------
-# Note: These must be 'async def' because database calls are async.
-
-@app.post("/user/setup")
-async def create_user(profile: StudentProfile):
+# Health check endpoint
+@app.get("/health", response_model=HealthResponse, tags=["health"])
+async def health_check():
     """
-    Creates or updates a user profile in MongoDB.
-    Passes the Pydantic model 'StudentProfile' directly to the service.
+    Health check endpoint.
+    
+    Returns:
+        Status and connection info
     """
-    await save_profile(profile)
-    return {"status": "success", "message": f"Profile saved for {profile.student_id}"}
+    return HealthResponse(
+        status="healthy",
+        version=settings.APP_VERSION,
+        database="connected"
+    )
 
-@app.get("/user/{student_id}")
-async def get_user(student_id: str):
-    """Retrieves a user profile to verify it was saved."""
-    profile = await get_profile(student_id)
-    if not profile:
-        raise HTTPException(status_code=404, detail="User not found")
-    return profile
+# Include versioned API routers
+app.include_router(
+    api_router,
+    prefix="/api"
+)
 
+# ============================
+# ERROR HANDLING
+# ============================
 
-# -------------------------
-# Main Query Endpoint
-# -------------------------
+@app.exception_handler(Exception)
+async def global_exception_handler(request, exc):
+    """Handle unexpected exceptions."""
+    logger.error(f"Unhandled exception: {str(exc)}", exc_info=exc)
+    
+    return {
+        "success": False,
+        "message": "Internal server error",
+        "detail": str(exc) if settings.DEBUG else "An error occurred"
+    }
 
-@app.post("/query")
-def handle_query(request: QueryRequest):
-    """
-    Temporary direct call to RAG pipeline.
-    Later this will be replaced by LangGraph orchestration.
-    """
-    docs = rag_service.query(request.query)
-    return {"response": docs}
+# ============================
+# STARTUP MESSAGE
+# ============================
+
+@app.on_event("startup")
+async def startup_message():
+    logger.info(f"🎓 AgentEd Backend v{settings.APP_VERSION} is running")
+    logger.info(f"📖 Docs available at http://localhost:8000/api/docs")
+    logger.info(f"🔗 API endpoints: /api/v1 (services) and /api/v2 (agents)")

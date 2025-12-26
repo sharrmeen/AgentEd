@@ -7,7 +7,7 @@ import uuid
 import asyncio
 from functools import wraps
 from langchain_chroma import Chroma
-from langchain_huggingface import HuggingFaceEmbeddings
+from app.services.embedding_service import get_embedding_model
 from langchain_experimental.text_splitter import SemanticChunker
 from langchain_community.document_loaders import UnstructuredWordDocumentLoader, UnstructuredPDFLoader
 from langchain_core.documents import Document
@@ -18,7 +18,7 @@ import PyPDF2
 try:
     from app.services.ocr_service import extract_text_preprocessed
 except ImportError:
-    # Fallback for running script directly instead of as a module
+    # Fallback for running script directly instead of as a chapter
     from ocr_service import extract_text_preprocessed
 
 
@@ -52,14 +52,15 @@ class IngestionService:
     - Persisting documents to vector database with traceability
     """
     
-    def __init__(self, db_directory="./chroma_db", subject=None, chapter=None):
+    def __init__(self, db_directory="./chroma_db", subject=None, chapter=None,user_id=None):
         self.db_directory = db_directory
-        self.embedding_model = HuggingFaceEmbeddings(model_name="intfloat/multilingual-e5-large")
+        self.embedding_model = get_embedding_model()
+
         
         # Metadata context
         self.subject = subject
         self.chapter = chapter
-        
+        self.user_id = str(user_id) if user_id else None
         # Configuration from environment variables with defaults
         self.MAX_CHUNK_SIZE = int(os.getenv("MAX_CHUNK_SIZE", "1200"))
         
@@ -125,6 +126,8 @@ class IngestionService:
                 doc.metadata["subject"] = self.subject
             if self.chapter:
                 doc.metadata["chapter"] = self.chapter
+            if self.user_id:
+                doc.metadata["user_id"] = self.user_id
         
         return self._process_documents(documents, source=file_path)
 
@@ -187,6 +190,8 @@ class IngestionService:
                     doc.metadata["subject"] = self.subject
                 if self.chapter:
                     doc.metadata["chapter"] = self.chapter
+                if self.user_id:
+                    doc.metadata["user_id"] = self.user_id
             
             return self._process_documents(documents, source=file_path)
         except Exception as e:
@@ -269,7 +274,8 @@ class IngestionService:
                         "page": page_num,
                         "file_type": "pdf_scanned",
                         "subject": self.subject,
-                        "chapter": self.chapter
+                        "chapter": self.chapter,
+                        "user_id": self.user_id
                     }
                 )
                 return doc
@@ -314,7 +320,8 @@ class IngestionService:
                     "page": 1,
                     "file_type": "image",
                     "subject": self.subject,
-                    "chapter": self.chapter
+                    "chapter": self.chapter,
+                    "user_id": self.user_id
                 }
             )
             
@@ -373,7 +380,8 @@ class IngestionService:
         for chunk in unique_chunks:
             chunk.metadata["chunk_id"] = str(uuid.uuid4())
             # Prefix with "passage: " for E5 embedding model
-            chunk.page_content = f"passage: {chunk.page_content}"
+            if not chunk.page_content.startswith("passage:"):
+                chunk.page_content = f"passage: {chunk.page_content}"
             chunks_with_ids.append(chunk)
         
         # Add to database
