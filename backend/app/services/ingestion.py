@@ -16,10 +16,10 @@ import PyPDF2
 
 # --- Import OCR service ---
 try:
-    from app.services.ocr_service import extract_text_preprocessed
+    from app.services.ocr_service import extract_text
 except ImportError:
     # Fallback for running script directly instead of as a chapter
-    from ocr_service import extract_text_preprocessed
+    from ocr_service import extract_text
 
 
 def async_to_sync(async_func):
@@ -259,7 +259,7 @@ class IngestionService:
             loop = asyncio.get_event_loop()
             page_text = await loop.run_in_executor(
                 None, 
-                extract_text_preprocessed, 
+                extract_tex, 
                 temp_image_path
             )
             
@@ -302,7 +302,7 @@ class IngestionService:
         
         try:
             # Extract text using OCR service
-            extracted_text = extract_text_preprocessed(image_path)
+            extracted_text = extract_text(image_path)
             
             # Clean OCR output
             extracted_text = self._clean_ocr_text(extracted_text)

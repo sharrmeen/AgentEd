@@ -3,6 +3,8 @@
 from datetime import datetime
 from typing import List, Dict
 from .base import MongoBaseModel, PyObjectId
+from pydantic import BaseModel
+
 
 
 class ChapterProgress(BaseModel):

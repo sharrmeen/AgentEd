@@ -18,7 +18,7 @@ from bson import ObjectId
 
 from app.core.database import db
 from app.core.models.syllabus import Syllabus
-from app.services.ocr_service import extract_text_preprocessed
+from app.services.ocr_service import extract_text
 from app.services.subject_service import SubjectService
 
 
@@ -140,7 +140,7 @@ class SyllabusService:
         """
         if file_type == "image":
             # Use OCR
-            return extract_text_preprocessed(file_path)
+            return extract_text(file_path)
         
         elif file_type == "pdf":
             # Import PDF loader
@@ -152,14 +152,14 @@ class SyllabusService:
                 
                 if not documents:
                     # Fallback to OCR for scanned PDFs
-                    return extract_text_preprocessed(file_path)
+                    return extract_text(file_path)
                 
                 # Combine all pages
                 return "\n\n".join([doc.page_content for doc in documents])
             
             except Exception as e:
                 print(f"PDF text extraction failed, trying OCR: {e}")
-                return extract_text_preprocessed(file_path)
+                return extract_text(file_path)
         
         elif file_type == "docx":
             # Import DOCX loader

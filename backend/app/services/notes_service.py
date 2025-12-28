@@ -1,157 +1,146 @@
-# backend/app/services/chat_service.py
+# backend/app/services/notes_service.py
 
 from datetime import datetime
 from bson import ObjectId
-from typing import Optional
 
 from app.core.database import db
-from app.core.models.chat import Chat
-from app.core.models.session import StudySession
+from app.core.models.notes import Notes
+from app.services.ingestion import IngestionService
 
 
-class ChatService:
+class NotesService:
     """
-    Chat service layer.
-
-    One chat per study session.
-    Acts as the conversation container.
+    NotesService:
+    - Persists notes metadata in MongoDB
+    - Triggers ingestion into ChromaDB
+    - Guarantees metadata consistency between MongoDB and Vector DB
     """
-
-    # ============================
-    # Get or Create Chat
-    # ============================
 
     @staticmethod
-    async def get_or_create_chat(
+    async def create_and_ingest_note(
         *,
-        session: StudySession,
-    ) -> Chat:
+        user_id: ObjectId,
+        subject_id: ObjectId,
+        subject: str,  # Display name
+        chapter: str,  # ← FIXED: Was "module"
+        source_file: str,
+        file_path: str,
+        file_type: str,
+    ) -> Notes:
         """
-        Fetch existing chat or create one for a study session.
+        1. Store notes metadata in MongoDB
+        2. Ingest note into Chroma with correct metadata
+        
+        Args:
+            user_id: Owner
+            subject_id: FK to Subject
+            subject: Subject display name (for ChromaDB metadata)
+            chapter: Chapter name (for ChromaDB metadata)
+            source_file: Original filename
+            file_path: Saved file path
+            file_type: pdf | docx | image
         """
-        chats_col = db.chats()
-        sessions_col = db.study_sessions()
+        notes_col = db.notes()
 
-        # 1️⃣ Return existing chat if already linked
-        if session.chat_id:
-            existing = await chats_col.find_one(
-                {"_id": session.chat_id}
-            )
-            if existing:
-                return Chat(**existing)
-
-        # 2️⃣ Create new chat
-        chat_doc = {
-            "user_id": session.user_id,
-            "session_id": session.id,
-            "subject_id": session.subject_id,  # ← FIXED
-            "chapter_number": session.chapter_number,  # ← FIXED
-            "chapter_title": session.chapter_title,  # ← ADDED
+        # ---------- MongoDB Metadata ----------
+        note_doc = {
+            "user_id": user_id,
+            "subject_id": subject_id,  # ← ADDED
+            "subject": subject,
+            "chapter": chapter,  # ← FIXED
+            "source_file": source_file,
+            "file_path": file_path,
+            "file_type": file_type,
             "created_at": datetime.utcnow(),
+            "updated_at": datetime.utcnow(),
         }
 
-        result = await chats_col.insert_one(chat_doc)
-        chat_id = result.inserted_id
+        result = await notes_col.insert_one(note_doc)
+        note_doc["_id"] = result.inserted_id
 
-        # 3️⃣ Link chat to session
-        await sessions_col.update_one(
-            {"_id": session.id},
-            {
-                "$set": {
-                    "chat_id": chat_id,
-                    "last_active": datetime.utcnow()
-                }
-            }
+        note = Notes(**note_doc)
+
+        # ---------- Chroma Ingestion ----------
+        ingestor = IngestionService(
+            subject=note.subject,
+            chapter=note.chapter,  # ← FIXED: consistent naming
+            user_id=note.user_id,
         )
 
-        chat_doc["_id"] = chat_id
-        return Chat(**chat_doc)
+        ingestion_result = ingestor.ingest(note.file_path)
 
+        print(f"📚 Notes ingested: {ingestion_result}")
+
+        return note
+    
     # ============================
-    # Fetch Chat
+    # GET NOTES
     # ============================
-
-    @staticmethod
-    async def get_chat_by_session(
-        *,
-        user_id: ObjectId,
-        session_id: ObjectId,
-    ) -> Optional[Chat]:
-        """
-        Retrieve chat by session (ownership enforced).
-        """
-        chats_col = db.chats()
-
-        doc = await chats_col.find_one({
-            "session_id": session_id,
-            "user_id": user_id
-        })
-
-        return Chat(**doc) if doc else None
     
     @staticmethod
-    async def get_chat_by_id(
+    async def get_notes_by_chapter(
         *,
         user_id: ObjectId,
-        chat_id: ObjectId,
-    ) -> Optional[Chat]:
+        subject_id: ObjectId,
+        chapter: str
+    ) -> list[Notes]:
         """
-        Retrieve chat by ID (ownership enforced).
+        Get all notes for a specific chapter.
         """
-        chats_col = db.chats()
-
-        doc = await chats_col.find_one({
-            "_id": chat_id,
-            "user_id": user_id
-        })
-
-        return Chat(**doc) if doc else None
-
-    # ============================
-    # Activity Tracking
-    # ============================
-
+        notes_col = db.notes()
+        
+        cursor = notes_col.find({
+            "user_id": user_id,
+            "subject_id": subject_id,
+            "chapter": chapter
+        }).sort("created_at", -1)
+        
+        docs = await cursor.to_list(None)
+        return [Notes(**doc) for doc in docs]
+    
     @staticmethod
-    async def touch_chat(
-        *,
-        chat_id: ObjectId,
-    ) -> None:
-        """
-        Update last_active timestamp on session.
-        """
-        chats_col = db.chats()
-        sessions_col = db.study_sessions()
-
-        chat = await chats_col.find_one({"_id": chat_id})
-        if not chat:
-            return
-
-        await sessions_col.update_one(
-            {"_id": chat["session_id"]},
-            {"$set": {"last_active": datetime.utcnow()}}
-        )
-
-    # ============================
-    # Ownership Validation
-    # ============================
-
-    @staticmethod
-    async def validate_chat_ownership(
+    async def get_notes_by_subject(
         *,
         user_id: ObjectId,
-        chat_id: ObjectId,
-    ) -> Chat:
+        subject_id: ObjectId
+    ) -> list[Notes]:
         """
-        Ensure chat belongs to user.
+        Get all notes for a subject.
         """
-        chats_col = db.chats()
-
-        chat = await chats_col.find_one({
-            "_id": chat_id,
+        notes_col = db.notes()
+        
+        cursor = notes_col.find({
+            "user_id": user_id,
+            "subject_id": subject_id
+        }).sort("created_at", -1)
+        
+        docs = await cursor.to_list(None)
+        return [Notes(**doc) for doc in docs]
+    
+    # ============================
+    # DELETE
+    # ============================
+    
+    @staticmethod
+    async def delete_note(
+        *,
+        user_id: ObjectId,
+        note_id: ObjectId
+    ) -> bool:
+        """
+        Delete note metadata from MongoDB.
+        
+        NOTE: This does NOT remove from ChromaDB.
+        File remains on disk.
+        
+        Returns:
+            True if deleted, False if not found
+        """
+        notes_col = db.notes()
+        
+        result = await notes_col.delete_one({
+            "_id": note_id,
             "user_id": user_id
         })
-
-        if not chat:
-            raise PermissionError("Unauthorized chat access")
-
-        return Chat(**chat)
+        
+        return result.deleted_count > 0

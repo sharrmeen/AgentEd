@@ -1,66 +1,60 @@
-# backend/app/agents/study_plan_agent.py
+# backend/app/agents/planner_agent.py
 
 """
-Study Plan Agent (Refactored) - Wraps PlannerService.
+Study Plan Agent - LangChain v1 Compatible (Official Migration)
 
-Responsibilities:
-- Generate optimized study plans from syllabus
-- Parse user constraints (exam dates, study hours)
-- Track progress and objectives
-- Auto-replan when deadlines missed
-- NO CHANGES to PlannerService
+Uses langchain.agents.create_agent instead of deprecated patterns.
 """
 
 import os
+import json
 from bson import ObjectId
 from typing import Dict
 
 from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.tools import Tool
-from langchain.agents import create_react_agent
-from langchain import hub
+from langchain.agents import create_agent
+from langchain.tools import tool
 
 from app.agents.orchestration.state import AgentEdState
 from app.services.planner_service import PlannerService
 from app.services.subject_service import SubjectService
 from app.services.syllabus_service import SyllabusService
 
+from dotenv import load_dotenv
 
-# ============================
-# LLM SETUP
-# ============================
+load_dotenv()
 
 llm = ChatGoogleGenerativeAI(
-    model="gemini-1.5-flash",
+    model="gemini-2.5-flash-lite",
     temperature=0.3,
-    google_api_key=os.getenv("GOOGLE_API_KEY")
+    google_api_key=os.getenv("GEMINI_API_KEY")
 )
 
 
 # ============================
-# TOOLS (Wrap PlannerService)
+# TOOLS (Using @tool decorator - official way)
 # ============================
 
-async def generate_study_plan_tool(params: Dict) -> str:
-    """
-    Tool that calls PlannerService.generate_plan().
-    
-    Input: {user_id, subject_id, target_days, daily_hours}
-    Output: Generated study plan summary
-    """
+@tool
+def generate_study_plan(user_id: str, subject_id: str, target_days: int = 30, daily_hours: float = 2.0) -> str:
+    """Generate an optimized study plan from syllabus."""
     try:
-        planner_state = await PlannerService.generate_plan(
-            user_id=ObjectId(params["user_id"]),
-            subject_id=ObjectId(params["subject_id"]),
-            target_days=params.get("target_days", 30),
-            daily_hours=params.get("daily_hours", 2.0)
+        import asyncio
+        
+        result = asyncio.run(
+            PlannerService.generate_plan(
+                user_id=ObjectId(user_id),
+                subject_id=ObjectId(subject_id),
+                target_days=target_days,
+                daily_hours=daily_hours
+            )
         )
         
-        # Get full plan
-        subject = await SubjectService.get_subject_by_id(
-            user_id=ObjectId(params["user_id"]),
-            subject_id=ObjectId(params["subject_id"])
+        subject = asyncio.run(
+            SubjectService.get_subject_by_id(
+                user_id=ObjectId(user_id),
+                subject_id=ObjectId(subject_id)
+            )
         )
         
         chapters = subject.plan.get("chapters", [])
@@ -70,9 +64,9 @@ async def generate_study_plan_tool(params: Dict) -> str:
         ])
         
         return f"""Study plan generated successfully!
-Total Chapters: {planner_state.total_chapters}
-Target Days: {planner_state.target_days}
-Daily Hours: {planner_state.daily_hours}
+Total Chapters: {result.total_chapters}
+Target Days: {result.target_days}
+Daily Hours: {result.daily_hours}
 
 Chapters:
 {chapter_list}"""
@@ -81,56 +75,56 @@ Chapters:
         return f"Error generating plan: {str(e)}"
 
 
-async def check_progress_tool(params: Dict) -> str:
-    """
-    Tool that checks study progress.
-    
-    Input: {user_id, subject_id}
-    Output: Current progress summary
-    """
+@tool
+def check_progress(user_id: str, subject_id: str) -> str:
+    """Check current study progress."""
     try:
-        planner_state = await PlannerService.get_planner_state(
-            user_id=ObjectId(params["user_id"]),
-            subject_id=ObjectId(params["subject_id"])
+        import asyncio
+        
+        result = asyncio.run(
+            PlannerService.get_planner_state(
+                user_id=ObjectId(user_id),
+                subject_id=ObjectId(subject_id)
+            )
         )
         
-        if not planner_state:
+        if not result:
             return "No study plan found. Generate one first."
         
-        completed = len(planner_state.completed_chapters)
-        total = planner_state.total_chapters
-        percent = planner_state.completion_percent
+        completed = len(result.completed_chapters)
+        total = result.total_chapters
+        percent = result.completion_percent
         
         return f"""Progress Report:
 Completed: {completed}/{total} chapters ({percent}%)
-Current Chapter: {planner_state.current_chapter}
-Next Suggestion: {planner_state.next_suggestion}"""
+Current Chapter: {result.current_chapter}
+Next Suggestion: {result.next_suggestion}"""
     
     except Exception as e:
         return f"Error checking progress: {str(e)}"
 
 
-async def mark_objective_tool(params: Dict) -> str:
-    """
-    Tool that marks objectives complete.
-    
-    Input: {user_id, subject_id, chapter_number, objective}
-    Output: Update result with auto-replan notification
-    """
+@tool
+def mark_objective_complete(user_id: str, subject_id: str, chapter_number: int, objective: str) -> str:
+    """Mark a learning objective as complete."""
     try:
-        result = await PlannerService.mark_objective_complete(
-            user_id=ObjectId(params["user_id"]),
-            subject_id=ObjectId(params["subject_id"]),
-            chapter_number=params["chapter_number"],
-            objective=params["objective"]
+        import asyncio
+        
+        result = asyncio.run(
+            PlannerService.mark_objective_complete(
+                user_id=ObjectId(user_id),
+                subject_id=ObjectId(subject_id),
+                chapter_number=chapter_number,
+                objective=objective
+            )
         )
         
         message = "✅ Objective marked complete."
         
-        if result["chapter_completed"]:
+        if result.get("chapter_completed"):
             message += "\n🎉 Chapter completed! All objectives done."
         
-        if result["replanned"]:
+        if result.get("replanned"):
             message += "\n⚠️ Deadline missed. Plan automatically adjusted."
         
         return message
@@ -139,30 +133,7 @@ async def mark_objective_tool(params: Dict) -> str:
         return f"Error marking objective: {str(e)}"
 
 
-# Wrap tools for LangChain
-study_plan_tool = Tool(
-    name="generate_study_plan",
-    description="""Generate an optimized study plan from syllabus.
-    Input: JSON with user_id, subject_id, target_days (int), daily_hours (float).
-    Use this when user wants to create or regenerate a study plan.""",
-    func=generate_study_plan_tool
-)
-
-progress_tool = Tool(
-    name="check_progress",
-    description="""Check current study progress.
-    Input: JSON with user_id, subject_id.
-    Use this when user asks about their progress, status, or completion.""",
-    func=check_progress_tool
-)
-
-objective_tool = Tool(
-    name="mark_objective_complete",
-    description="""Mark a learning objective as complete.
-    Input: JSON with user_id, subject_id, chapter_number (int), objective (str).
-    Use this when user has completed a specific objective or topic.""",
-    func=mark_objective_tool
-)
+tools = [generate_study_plan, check_progress, mark_objective_complete]
 
 
 # ============================
@@ -172,11 +143,11 @@ objective_tool = Tool(
 async def study_plan_node(state: AgentEdState) -> Dict:
     """
     LangGraph node for study planning.
-    
-    Uses LangChain ReAct agent with PlannerService tools.
+    Uses official LangChain v1 create_agent.
+    INPUT/OUTPUT: Unchanged - fully compatible
     """
     
-    print("--- 📅 STUDY PLAN AGENT: Working... ---")
+    print("--- 📋 STUDY PLAN AGENT: Working... ---")
     
     user_id = state["user_id"]
     subject_id = state.get("subject_id")
@@ -194,50 +165,36 @@ async def study_plan_node(state: AgentEdState) -> Dict:
         except:
             pass
     
-    # Extract constraints from state or query
     constraints = state.get("constraints", {})
     target_days = constraints.get("target_days", 30)
     daily_hours = constraints.get("daily_hours", 2.0)
     
-    # Build context for agent
-    context = f"""
+    try:
+        # Build system prompt (official v1 way)
+        system_prompt = f"""You are a helpful study planning assistant.
+
 User Query: {query}
-Subject ID: {subject_id}
+Subject ID: {subject_id or "Not specified"}
 Target Days: {target_days}
 Daily Hours: {daily_hours}
+Syllabus Available: {"✅ Available" if syllabus else "❌ Not loaded"}
 
-Available Information:
-- Syllabus: {"✅ Available" if syllabus else "❌ Not loaded"}
+Help the user with their study planning request using available tools."""
 
-Your task: Help the user with their study planning request.
-"""
-    
-    # Create ReAct agent
-    prompt = hub.pull("hwchase17/react")
-    
-    agent = create_react_agent(
-        llm=llm,
-        tools=[study_plan_tool, progress_tool, objective_tool],
-        prompt=prompt
-    )
-    
-    try:
-        # Run agent
-        from langchain.agents import AgentExecutor
-        
-        executor = AgentExecutor(
-            agent=agent,
-            tools=[study_plan_tool, progress_tool, objective_tool],
-            verbose=True,
-            handle_parsing_errors=True
+        # Create agent using official v1 API
+        agent = create_agent(
+            model=llm,
+            tools=tools,
+            system_prompt=system_prompt
         )
         
-        result = await executor.ainvoke({
-            "input": context,
-            "agent_scratchpad": ""
+        # Invoke agent
+        result = agent.invoke({
+            "messages": [{"role": "user", "content": query}]
         })
         
-        agent_output = result.get("output", "I couldn't complete that task.")
+        # Extract output
+        agent_output = getattr(result, "content", "I couldn't complete that task.")
         
         # Fetch updated planner state
         planner_state_dict = None
@@ -269,6 +226,9 @@ Your task: Help the user with their study planning request.
     
     except Exception as e:
         print(f"❌ Study Plan Agent Error: {e}")
+        import traceback
+        traceback.print_exc()
+        
         return {
             "errors": [f"Study Plan Agent: {str(e)}"],
             "messages": ["Sorry, I couldn't process your planning request."],

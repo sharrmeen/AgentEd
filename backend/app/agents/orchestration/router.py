@@ -1,12 +1,9 @@
 # backend/app/agents/orchestration/router.py
 
 """
-State Router (Refactored) - Intelligent Routing Logic.
+State Router - Updated for Full Agent System.
 
-Routes workflow between agents based on:
-- User query keywords
-- Current state (next_step)
-- Workflow completion flag
+Routes workflow with agent execution validation and dependency checking.
 """
 
 from typing import Literal
@@ -15,25 +12,18 @@ from app.agents.orchestration.state import AgentEdState
 
 def route_supervisor(state: AgentEdState) -> Literal["study_plan", "content", "quiz", "feedback", "__end__"]:
     """
-    Main routing function for agent workflow.
+    Main routing function - Entry point.
     
-    Routing Priority:
-    1. Check workflow_complete flag (if True → END)
-    2. Check explicit next_step in state
-    3. Parse user query for intent
-    4. Default to END if no clear route
+    Routes based on:
+    1. Workflow completion flag
+    2. Explicit next_step
+    3. User query intent
     """
     
-    # -------------------------
-    # 1️⃣ Check Completion Flag
-    # -------------------------
     if state.get("workflow_complete", False):
         print("🎯 Router: Workflow marked complete → END")
         return "__end__"
     
-    # -------------------------
-    # 2️⃣ Check Explicit Next Step
-    # -------------------------
     next_step = state.get("next_step", "").upper()
     
     if next_step == "CONTENT":
@@ -52,12 +42,9 @@ def route_supervisor(state: AgentEdState) -> Literal["study_plan", "content", "q
         print("🎯 Router: next_step=END → workflow complete")
         return "__end__"
     
-    # -------------------------
-    # 3️⃣ Parse User Query
-    # -------------------------
+    # Parse user query for intent
     query = state.get("user_query", "").lower()
     
-    # Planning intents
     if any(keyword in query for keyword in [
         "plan", "schedule", "organize", "create plan", "generate plan",
         "study plan", "progress", "objective", "complete"
@@ -65,14 +52,12 @@ def route_supervisor(state: AgentEdState) -> Literal["study_plan", "content", "q
         print("🎯 Router: Query intent=PLAN → study_plan agent")
         return "study_plan"
     
-    # Quiz intents
     if any(keyword in query for keyword in [
         "quiz", "test", "assessment", "exam", "practice", "questions"
     ]):
         print("🎯 Router: Query intent=QUIZ → quiz agent")
         return "quiz"
     
-    # Feedback intents
     if any(keyword in query for keyword in [
         "feedback", "results", "score", "performance", "how did i do",
         "analyze", "review my"
@@ -80,7 +65,6 @@ def route_supervisor(state: AgentEdState) -> Literal["study_plan", "content", "q
         print("🎯 Router: Query intent=FEEDBACK → feedback agent")
         return "feedback"
     
-    # Knowledge/content intents (default for questions)
     if any(keyword in query for keyword in [
         "what", "explain", "how", "why", "tell me", "teach me",
         "describe", "define", "?"
@@ -88,9 +72,6 @@ def route_supervisor(state: AgentEdState) -> Literal["study_plan", "content", "q
         print("🎯 Router: Query intent=CONTENT → resource agent")
         return "content"
     
-    # -------------------------
-    # 4️⃣ Default to END
-    # -------------------------
     print("🎯 Router: No clear intent → END")
     return "__end__"
 
@@ -99,11 +80,14 @@ def route_from_study_plan(state: AgentEdState) -> Literal["content", "quiz", "__
     """
     Route after study plan agent completes.
     
-    Possible transitions:
-    - If user wants to learn content → content agent
-    - If user wants quiz → quiz agent
-    - Otherwise → end
+    Validates agent execution before routing.
     """
+    
+    # Check if agent completed successfully
+    if state.get("planner_state") is None:
+        print("⚠️ Router: Study plan generation failed → END")
+        return "__end__"
+    
     next_step = state.get("next_step", "END").upper()
     
     if next_step == "CONTENT":
@@ -118,11 +102,14 @@ def route_from_content(state: AgentEdState) -> Literal["quiz", "study_plan", "__
     """
     Route after resource agent completes.
     
-    Possible transitions:
-    - If user wants quiz next → quiz agent
-    - If user wants to update plan → study_plan agent
-    - Otherwise → end
+    Validates agent execution before routing.
     """
+    
+    # Check if agent completed successfully
+    if state.get("answer") is None and state.get("content") is None:
+        print("⚠️ Router: Content retrieval failed → END")
+        return "__end__"
+    
     next_step = state.get("next_step", "END").upper()
     
     if next_step == "QUIZ":
@@ -137,17 +124,32 @@ def route_from_quiz(state: AgentEdState) -> Literal["feedback", "__end__"]:
     """
     Route after quiz agent completes.
     
-    Typically goes to feedback agent if quiz results exist.
+    UPDATED: Validates quiz generation before proceeding to feedback.
+    Dependencies:
+    - Quiz must be generated successfully
+    - Feedback agent requires quiz + results
     """
-    next_step = state.get("next_step", "FEEDBACK").upper()
     
-    # If quiz was generated but not taken yet
-    if not state.get("quiz_results"):
-        print("🎯 Router: Quiz generated but not taken yet → END")
+    # Check quiz generation status
+    quiz_status = state.get("quiz_generation_status")
+    if quiz_status == "failed":
+        print("❌ Router: Quiz generation failed → END")
         return "__end__"
     
-    # If quiz was taken, show feedback
+    # Check if quiz was generated
+    if not state.get("quiz"):
+        print("⚠️ Router: No quiz generated → END")
+        return "__end__"
+    
+    # If quiz generated but no results submitted yet
+    if not state.get("quiz_results"):
+        print("⚠️ Router: Quiz generated, awaiting user results → END")
+        return "__end__"
+    
+    # If quiz taken, provide feedback
+    next_step = state.get("next_step", "FEEDBACK").upper()
     if next_step == "FEEDBACK":
+        print("🎯 Router: Quiz taken with results → feedback agent")
         return "feedback"
     
     return "__end__"
@@ -157,16 +159,69 @@ def route_from_feedback(state: AgentEdState) -> Literal["content", "study_plan",
     """
     Route after feedback agent completes.
     
-    User might want to:
-    - Review content → content agent
-    - Update study plan → study_plan agent
-    - End workflow
+    UPDATED: Validates feedback generation before routing.
+    Dependencies:
+    - Feedback must be generated successfully
+    - Requires quiz results for analysis
     """
+    
+    # Check feedback generation status
+    feedback_status = state.get("feedback_generation_status")
+    if feedback_status == "failed":
+        print("❌ Router: Feedback generation failed → END")
+        return "__end__"
+    
+    # Check if feedback was generated
+    if not state.get("feedback"):
+        print("⚠️ Router: No feedback generated → END")
+        return "__end__"
+    
+    # Allow further actions based on user intent
     next_step = state.get("next_step", "END").upper()
     
     if next_step == "CONTENT":
+        print("🎯 Router: User wants to review content → resource agent")
         return "content"
     if next_step == "PLAN":
+        print("🎯 Router: User wants to update plan → study_plan agent")
         return "study_plan"
     
+    print("🎯 Router: Feedback complete → END")
     return "__end__"
+
+
+# ============================
+# VALIDATION HELPERS
+# ============================
+
+def validate_quiz_execution(state: AgentEdState) -> bool:
+    """Check if quiz agent executed successfully."""
+    return (
+        state.get("quiz_generation_status") == "success" and
+        state.get("quiz") is not None and
+        len(state.get("quiz", [])) > 0
+    )
+
+
+def validate_feedback_execution(state: AgentEdState) -> bool:
+    """Check if feedback agent executed successfully."""
+    return (
+        state.get("feedback_generation_status") == "success" and
+        state.get("feedback") is not None
+    )
+
+
+def validate_content_execution(state: AgentEdState) -> bool:
+    """Check if resource agent executed successfully."""
+    return (
+        state.get("answer") is not None or 
+        state.get("content") is not None
+    )
+
+
+def validate_plan_execution(state: AgentEdState) -> bool:
+    """Check if study plan agent executed successfully."""
+    return (
+        state.get("planner_state") is not None and
+        state.get("planner_state").get("total_chapters") is not None
+    )

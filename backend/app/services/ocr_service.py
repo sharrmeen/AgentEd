@@ -23,5 +23,5 @@ def extract_text(image_path):
 
 if __name__ == "__main__":
     path = "/Users/sharmeenkhan/AgentEd/backend/app/services/image.png"
-    result = extract_text_preprocessed(path)
+    result = extract_text(path)
     print("Extracted Text:\n", result)

@@ -1,39 +1,23 @@
-import asyncio
-from app.core.database import db
-from app.core.models import StudentProfile
-from app.services.user_service import save_profile, get_profile
+from pymongo import MongoClient
 
-async def main():
-    print("🔄 Connecting to Database...")
-    # 1. Manually trigger the connection
-    db.connect()
+# Connect to MongoDB (default port 27017)
+client = MongoClient("mongodb://localhost:27017/")
 
-    # 2. Define a dummy user
-    test_user_id = "student_001"
-    dummy_profile = StudentProfile(
-        student_id=test_user_id,
-        weak_topics=["Photosynthesis", "Cellular Respiration"],
-        mastered_topics=["Mitosis"]
-    )
+# Create or switch to a test database
+db = client["test_database"]
 
-    # 3. Save the user to MongoDB
-    print(f"💾 Saving profile for {test_user_id}...")
-    await save_profile(dummy_profile)
-    print("✅ Save successful!")
+# Create or switch to a collection
+collection = db["test_collection"]
 
-    # 4. Read the user back to confirm
-    print(f"🔎 Reading back profile for {test_user_id}...")
-    fetched_profile = await get_profile(test_user_id)
-    
-    if fetched_profile:
-        print(f"🎉 Success! Found user in DB:")
-        print(f"   - Weak Topics: {fetched_profile.weak_topics}")
-        print(f"   - Mastered: {fetched_profile.mastered_topics}")
-    else:
-        print("❌ Error: Could not find the user we just saved.")
+# Insert a test document
+test_doc = {"name": "Test User", "email": "test@example.com"}
+insert_result = collection.insert_one(test_doc)
 
-    # 5. Close connection
-    db.close()
+print(f"Inserted document with ID: {insert_result.inserted_id}")
 
-if __name__ == "__main__":
-    asyncio.run(main())
+# Retrieve and print the document
+retrieved_doc = collection.find_one({"name": "Test User"})
+print("Retrieved document:", retrieved_doc)
+
+# Close the connection
+client.close()

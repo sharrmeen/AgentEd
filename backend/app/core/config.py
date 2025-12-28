@@ -49,10 +49,9 @@ class Settings(BaseSettings):
     # ============================
     # API KEYS (set these in .env)
     # ============================
-    OPENAI_API_KEY: Optional[str] = None
-    LLM_MODEL: str = "gpt-4"
     TAVILY_API_KEY: Optional[str] = None
     GOOGLE_API_KEY: Optional[str] = None
+    GEMINI_MODEL: str = "gemini-2.5-flash-lite"
 
     # ============================
     # CHROMADB
@@ -67,6 +66,8 @@ class Settings(BaseSettings):
     MAX_UPLOAD_SIZE: int = 10 * 1024 * 1024  # 10 MB
     ALLOWED_EXTENSIONS: List[str] = ["pdf", "docx", "png", "jpg", "jpeg"]
     # (Removed CHROMA_DB_DIRECTORY: use CHROMA_PERSIST_DIRECTORY only)
+    
+    
     
     class Config:
         env_file = ".env"

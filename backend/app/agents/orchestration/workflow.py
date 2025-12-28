@@ -1,20 +1,15 @@
 # backend/app/agents/orchestration/workflow.py
 
 """
-LangGraph Workflow (Refactored) - Production-Ready Orchestration.
+LangGraph Workflow - Updated for Full Agent System.
 
-Integrates all agents:
-- Study Plan Agent (PlannerService wrapper)
-- Resource Agent (RetrievalService + Tavily wrapper)
-- Quiz Agent (content-based quiz generation)
-- Feedback Agent (performance analysis)
-
-NO CHANGES to existing services required.
+Includes error handling, execution tracking, and validation.
 """
 
 from langgraph.graph import StateGraph, END
 from datetime import datetime
 import uuid
+import time
 
 from app.agents.orchestration.state import AgentEdState
 from app.agents.orchestration.router import (
@@ -22,10 +17,11 @@ from app.agents.orchestration.router import (
     route_from_study_plan,
     route_from_content,
     route_from_quiz,
-    route_from_feedback
+    route_from_feedback,
+    validate_quiz_execution,
+    validate_feedback_execution
 )
 
-# Import agent nodes
 from app.agents.planner_agent import study_plan_node
 from app.agents.resource_agent import resource_agent_node
 from app.agents.quiz_agent import quiz_agent_node
@@ -33,26 +29,164 @@ from app.agents.feedback_agent import feedback_agent_node
 
 
 # ============================
+# WRAPPER FUNCTIONS - Add execution tracking & error handling
+# ============================
+
+async def study_plan_node_wrapped(state: AgentEdState) -> dict:
+    """Wrapped study plan node with error handling and status tracking."""
+    try:
+        start_time = time.time()
+        result = await study_plan_node(state)
+        execution_time = time.time() - start_time
+        
+        # Track execution time
+        execution_times = state.get("execution_times", {})
+        execution_times["study_plan"] = execution_time
+        result["execution_times"] = execution_times
+        
+        print(f"✅ Study Plan Agent completed in {execution_time:.2f}s")
+        return result
+    
+    except Exception as e:
+        print(f"❌ Study Plan Agent failed: {e}")
+        
+        errors = state.get("errors", [])
+        errors.append(f"Study Plan Agent: {str(e)}")
+        
+        return {
+            "errors": errors,
+            "messages": ["Study plan generation failed. Please try again."],
+            "next_step": "END",
+            "workflow_complete": True,
+            "agent_trace": ["study_plan_error"]
+        }
+
+
+async def resource_agent_node_wrapped(state: AgentEdState) -> dict:
+    """Wrapped resource agent with error handling and status tracking."""
+    try:
+        start_time = time.time()
+        result = await resource_agent_node(state)
+        execution_time = time.time() - start_time
+        
+        execution_times = state.get("execution_times", {})
+        execution_times["resource"] = execution_time
+        result["execution_times"] = execution_times
+        
+        print(f"✅ Resource Agent completed in {execution_time:.2f}s")
+        return result
+    
+    except Exception as e:
+        print(f"❌ Resource Agent failed: {e}")
+        
+        errors = state.get("errors", [])
+        errors.append(f"Resource Agent: {str(e)}")
+        
+        return {
+            "errors": errors,
+            "messages": ["Content retrieval failed. Please try again."],
+            "next_step": "END",
+            "workflow_complete": True,
+            "agent_trace": ["resource_error"]
+        }
+
+
+async def quiz_agent_node_wrapped(state: AgentEdState) -> dict:
+    """
+    Wrapped quiz agent with error handling and status tracking.
+    UPDATED: Sets generation_status for router validation.
+    """
+    try:
+        start_time = time.time()
+        result = await quiz_agent_node(state)
+        execution_time = time.time() - start_time
+        
+        execution_times = state.get("execution_times", {})
+        execution_times["quiz"] = execution_time
+        result["execution_times"] = execution_times
+        
+        # Set generation status for router
+        if result.get("quiz") and len(result.get("quiz", [])) > 0:
+            result["quiz_generation_status"] = "success"
+            print(f"✅ Quiz Agent completed in {execution_time:.2f}s")
+        else:
+            result["quiz_generation_status"] = "failed"
+            print(f"⚠️ Quiz Agent completed but generated no questions")
+        
+        return result
+    
+    except Exception as e:
+        print(f"❌ Quiz Agent failed: {e}")
+        
+        errors = state.get("errors", [])
+        errors.append(f"Quiz Agent: {str(e)}")
+        
+        return {
+            "errors": errors,
+            "messages": ["Quiz generation failed. Please try again."],
+            "quiz_generation_status": "failed",
+            "next_step": "END",
+            "workflow_complete": True,
+            "agent_trace": ["quiz_error"]
+        }
+
+
+async def feedback_agent_node_wrapped(state: AgentEdState) -> dict:
+    """
+    Wrapped feedback agent with error handling and status tracking.
+    UPDATED: Sets generation_status for router validation.
+    """
+    try:
+        start_time = time.time()
+        result = await feedback_agent_node(state)
+        execution_time = time.time() - start_time
+        
+        execution_times = state.get("execution_times", {})
+        execution_times["feedback"] = execution_time
+        result["execution_times"] = execution_times
+        
+        # Set generation status for router
+        if result.get("feedback"):
+            result["feedback_generation_status"] = "success"
+            print(f"✅ Feedback Agent completed in {execution_time:.2f}s")
+        else:
+            result["feedback_generation_status"] = "failed"
+            print(f"⚠️ Feedback Agent completed but generated no feedback")
+        
+        return result
+    
+    except Exception as e:
+        print(f"❌ Feedback Agent failed: {e}")
+        
+        errors = state.get("errors", [])
+        errors.append(f"Feedback Agent: {str(e)}")
+        
+        return {
+            "errors": errors,
+            "messages": ["Feedback generation failed. Please try again."],
+            "feedback_generation_status": "failed",
+            "next_step": "END",
+            "workflow_complete": True,
+            "agent_trace": ["feedback_error"]
+        }
+
+
+# ============================
 # BUILD WORKFLOW GRAPH
 # ============================
 
 def build_workflow() -> StateGraph:
-
+    """Build LangGraph with error handling and execution tracking."""
     
-    # Initialize workflow with state schema
     workflow = StateGraph(AgentEdState)
     
-    # -------------------------
-    # Add Agent Nodes
-    # -------------------------
-    workflow.add_node("study_plan", study_plan_node)
-    workflow.add_node("content", resource_agent_node)
-    workflow.add_node("quiz", quiz_agent_node)
-    workflow.add_node("feedback", feedback_agent_node)
+    # Add nodes (wrapped with error handling)
+    workflow.add_node("study_plan", study_plan_node_wrapped)
+    workflow.add_node("content", resource_agent_node_wrapped)
+    workflow.add_node("quiz", quiz_agent_node_wrapped)
+    workflow.add_node("feedback", feedback_agent_node_wrapped)
     
-    # -------------------------
-    # Set Entry Point (Router)
-    # -------------------------
+    # Set entry point
     workflow.set_conditional_entry_point(
         route_supervisor,
         {
@@ -64,11 +198,7 @@ def build_workflow() -> StateGraph:
         }
     )
     
-    # -------------------------
-    # Define Edges (Agent → Router → Next Agent)
-    # -------------------------
-    
-    # From Study Plan Agent
+    # Define edges (with validation)
     workflow.add_conditional_edges(
         "study_plan",
         route_from_study_plan,
@@ -79,7 +209,6 @@ def build_workflow() -> StateGraph:
         }
     )
     
-    # From Resource Agent
     workflow.add_conditional_edges(
         "content",
         route_from_content,
@@ -90,7 +219,6 @@ def build_workflow() -> StateGraph:
         }
     )
     
-    # From Quiz Agent
     workflow.add_conditional_edges(
         "quiz",
         route_from_quiz,
@@ -100,7 +228,6 @@ def build_workflow() -> StateGraph:
         }
     )
     
-    # From Feedback Agent
     workflow.add_conditional_edges(
         "feedback",
         route_from_feedback,
@@ -114,7 +241,7 @@ def build_workflow() -> StateGraph:
     return workflow
 
 
-# Compile workflow (singleton)
+# Compile workflow
 agent_graph = build_workflow().compile()
 
 
@@ -133,128 +260,69 @@ async def run_workflow(
     **kwargs
 ) -> dict:
     """
-    Execute the complete agent workflow.
+    Execute the complete multi-agent workflow.
     
-    This is the main entry point for the agent system.
-    
-    Args:
-        user_id: MongoDB ObjectId as string
-        user_query: Natural language input
-        subject_id: Optional subject context
-        chapter_number: Optional chapter context
-        session_id: Optional session for cache
-        constraints: Optional planning constraints {target_days, daily_hours}
-        quiz_results: Optional quiz answers {q1: "B", q2: "A", ...}
-        **kwargs: Additional state fields
-    
-    Returns:
-        Final state dict with agent responses
-    
-    Example:
-        # Generate study plan
-        result = await run_workflow(
-            user_id="507f1f77bcf86cd799439011",
-            user_query="Create a 30-day study plan",
-            subject_id="507f1f77bcf86cd799439012",
-            constraints={"target_days": 30, "daily_hours": 2}
-        )
-        
-        # Ask question
-        result = await run_workflow(
-            user_id="507f1f77bcf86cd799439011",
-            user_query="What is photosynthesis?",
-            subject_id="507f1f77bcf86cd799439012",
-            session_id="507f1f77bcf86cd799439013"
-        )
-        
-        # Generate quiz
-        result = await run_workflow(
-            user_id="507f1f77bcf86cd799439011",
-            user_query="Give me a quiz on chapter 2",
-            subject_id="507f1f77bcf86cd799439012",
-            chapter_number=2
-        )
-        
-        # Get feedback
-        result = await run_workflow(
-            user_id="507f1f77bcf86cd799439011",
-            user_query="Show my quiz results",
-            subject_id="507f1f77bcf86cd799439012",
-            quiz_results={"q1": "B", "q2": "A", "q3": "C"}
-        )
+    INPUT/OUTPUT: Unchanged - fully compatible
     """
     
-    # Initialize state
     initial_state = AgentEdState(
-        # User context
         user_id=user_id,
         user_query=user_query,
-        
-        # Subject context
         subject_id=subject_id,
         subject_name=None,
         chapter_number=chapter_number,
         session_id=session_id,
-        
-        # Study Plan data
         syllabus=None,
         constraints=constraints or {},
         study_plan=None,
         planner_state=None,
-        
-        # Resource data
         current_topic=None,
         content=None,
         retrieved_docs=None,
         web_search_results=None,
         answer=None,
-        
-        # Quiz data
         quiz=None,
         quiz_metadata=None,
         quiz_results=quiz_results,
         quiz_score=None,
-        
-        # Feedback data
         feedback=None,
         performance_analysis=None,
-        
-        # Conversation
         messages=[],
         chat_history=None,
-        
-        # Control flow
         next_step="",
         workflow_complete=False,
-        
-        # Error handling
         errors=[],
-        
-        # Metadata
+        tool_execution_log=[],
+        agent_error_log=[],
         timestamp=datetime.utcnow().isoformat(),
         workflow_id=str(uuid.uuid4()),
         agent_trace=[],
-        
-        **kwargs  # Allow additional fields
+        execution_times={},
+        **kwargs
     )
     
-    # Log workflow start
     print(f"\n{'='*70}")
     print(f"🚀 AGENT WORKFLOW STARTED")
     print(f"   Query: {user_query}")
     print(f"   Workflow ID: {initial_state['workflow_id']}")
     print(f"{'='*70}\n")
     
-    # Execute workflow
     try:
         final_state = await agent_graph.ainvoke(initial_state)
         
-        # Log completion
         print(f"\n{'='*70}")
         print(f"✅ WORKFLOW COMPLETE")
         print(f"   Agents Called: {', '.join(final_state.get('agent_trace', []))}")
         print(f"   Messages: {len(final_state.get('messages', []))}")
         print(f"   Errors: {len(final_state.get('errors', []))}")
+        
+        # Print execution times
+        exec_times = final_state.get("execution_times", {})
+        if exec_times:
+            print(f"   Execution Times:")
+            for agent, time_taken in exec_times.items():
+                print(f"     - {agent}: {time_taken:.2f}s")
+        
         print(f"{'='*70}\n")
         
         return final_state
@@ -270,71 +338,3 @@ async def run_workflow(
             "messages": ["Sorry, something went wrong. Please try again."],
             "workflow_complete": True
         }
-
-
-# ============================
-# EXAMPLE USAGE
-# ============================
-
-async def test_workflow():
-    """Test the workflow with various queries."""
-    
-    user_id = "507f1f77bcf86cd799439011"
-    subject_id = "507f1f77bcf86cd799439012"
-    
-    print("\n" + "="*70)
-    print("🧪 TESTING AGENT WORKFLOW")
-    print("="*70)
-    
-    # Test 1: Study Planning
-    print("\n📝 TEST 1: Generate Study Plan")
-    print("-" * 70)
-    result = await run_workflow(
-        user_id=user_id,
-        user_query="Create a 30-day study plan with 2 hours per day",
-        subject_id=subject_id,
-        constraints={"target_days": 30, "daily_hours": 2.0}
-    )
-    print(f"Response: {result['messages'][0] if result['messages'] else 'No response'}")
-    
-    # Test 2: Knowledge Question
-    print("\n📚 TEST 2: Ask Question")
-    print("-" * 70)
-    result = await run_workflow(
-        user_id=user_id,
-        user_query="What is photosynthesis?",
-        subject_id=subject_id,
-        session_id="507f1f77bcf86cd799439013"
-    )
-    print(f"Response: {result['messages'][0] if result['messages'] else 'No response'}")
-    
-    # Test 3: Quiz Generation
-    print("\n📝 TEST 3: Generate Quiz")
-    print("-" * 70)
-    result = await run_workflow(
-        user_id=user_id,
-        user_query="Create a quiz on chapter 1",
-        subject_id=subject_id,
-        chapter_number=1
-    )
-    print(f"Response: {result['messages'][0] if result['messages'] else 'No response'}")
-    
-    # Test 4: Feedback
-    print("\n💬 TEST 4: Get Feedback")
-    print("-" * 70)
-    result = await run_workflow(
-        user_id=user_id,
-        user_query="Show my quiz results",
-        subject_id=subject_id,
-        quiz_results={"q1": "B", "q2": "A", "q3": "C", "q4": "A", "q5": "D"}
-    )
-    print(f"Response: {result['messages'][0] if result['messages'] else 'No response'}")
-    
-    print("\n" + "="*70)
-    print("✅ ALL TESTS COMPLETE")
-    print("="*70 + "\n")
-
-
-if __name__ == "__main__":
-    import asyncio
-    asyncio.run(test_workflow())
