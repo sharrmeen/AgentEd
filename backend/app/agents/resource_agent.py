@@ -199,7 +199,11 @@ Strategy:
         })
         
         # Extract output
-        answer = getattr(result, "content", "I couldn't find an answer to that question.")
+        if isinstance(result, dict) and "messages" in result:
+            last_message = result["messages"][-1]
+            answer = last_message.content if hasattr(last_message, 'content') else str(last_message)
+        else:
+            answer = getattr(result, "content", "I couldn't find an answer to that question.")
         
         # Store in cache if session exists
         if session_id and subject_id:

@@ -193,8 +193,12 @@ Help the user with their study planning request using available tools."""
             "messages": [{"role": "user", "content": query}]
         })
         
-        # Extract output
-        agent_output = getattr(result, "content", "I couldn't complete that task.")
+        # Extract output 
+        if isinstance(result, dict) and "messages" in result:
+            last_message = result["messages"][-1]
+            agent_output = last_message.content if hasattr(last_message, 'content') else str(last_message)
+        else:
+            agent_output = getattr(result, "content", "No response")
         
         # Fetch updated planner state
         planner_state_dict = None

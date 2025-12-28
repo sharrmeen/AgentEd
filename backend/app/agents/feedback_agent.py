@@ -235,7 +235,11 @@ Provide comprehensive feedback with specific revision suggestions."""
         })
         
         # Extract agent's analysis
-        agent_analysis = getattr(result, "content", "")
+        if isinstance(result, dict) and "messages" in result:
+            last_message = result["messages"][-1]
+            agent_analysis = last_message.content if hasattr(last_message, 'content') else str(last_message)
+        else:
+            agent_analysis = getattr(result, "content", "No response")
         
         # Now generate structured feedback
         parser = PydanticOutputParser(pydantic_object=FeedbackReport)

@@ -186,8 +186,12 @@ Create a comprehensive quiz based on the retrieved content and objectives."""
             }]
         })
         
-        # Extract agent's response (content retrieved + objectives understood)
-        agent_context = getattr(result, "content", "")
+        # Extract agent's response 
+        if isinstance(result, dict) and "messages" in result:
+            last_message = result["messages"][-1]
+            agent_context = last_message.content if hasattr(last_message, 'content') else str(last_message)
+        else:
+            agent_context = getattr(result, "content", "")
         
         # Now generate quiz using Pydantic structured output
         parser = PydanticOutputParser(pydantic_object=QuizOutput)
