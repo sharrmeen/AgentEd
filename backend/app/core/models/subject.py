@@ -4,7 +4,7 @@ Planner Agent operates at this level.
 """
 
 from datetime import datetime
-from typing import List, Dict
+from typing import List, Dict, Optional
 from .base import MongoBaseModel, PyObjectId
 
 
@@ -12,9 +12,9 @@ class Subject(MongoBaseModel):
     user_id: PyObjectId
 
     subject_name: str                 # "Biology"
-    syllabus_id: PyObjectId           # FK → syllabus._id
+    syllabus_id: Optional[PyObjectId] = None  # FK → syllabus._id
 
-    plan: Dict                        # Planner output (chapters, order, etc.)
+    plan: Optional[Dict] = None       # Planner output (chapters, order, etc.)
 
     status: str = "created"  # created | syllabus_uploaded | planned | in_progress | completed | archived
 

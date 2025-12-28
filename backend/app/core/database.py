@@ -31,6 +31,10 @@ class Database:
     db = None
 
     async def connect(self):
+        # Skip if already connected (e.g., by test fixtures)
+        if self.db is not None:
+            print("✅ MongoDB already connected (skipping)")
+            return
         try:
             self.client = AsyncIOMotorClient(
                 MONGODB_URI,
@@ -49,7 +53,7 @@ class Database:
             print("❌ MongoDB connection closed")
 
     def get_db(self):
-        if not self.db:
+        if self.db is None:
             raise RuntimeError("Database not connected")
         return self.db
 
@@ -83,6 +87,25 @@ class Database:
 
     def quizzes(self):
         return self.db["quizzes"]
+    
+    def notes(self):
+        """Collection for note metadata."""
+        return self.db["notes"]
+    
+    def quiz_results(self):
+        """Collection for quiz attempt results."""
+        return self.db["quiz_results"]
+
+    async def init_indexes(self):
+        """
+        Create indexes for performance and data integrity.
+        Call once on application startup.
+        """
+        # Skip if database not connected
+        if self.db is None:
+            print("⚠️ Database not connected, skipping index initialization")
+            return
+        await init_indexes()
 
 
 db = Database()
@@ -235,6 +258,22 @@ async def init_indexes():
     await dbi["quizzes"].create_index(
         [("quiz_type", ASCENDING)],
         name="quiz_type_filter"
+    )
+    
+    # ---------- quiz_results ----------
+    await dbi["quiz_results"].create_index(
+        [("user_id", ASCENDING), ("subject_id", ASCENDING)],
+        name="quiz_results_by_subject"
+    )
+    
+    await dbi["quiz_results"].create_index(
+        [("user_id", ASCENDING), ("quiz_id", ASCENDING)],
+        name="quiz_results_by_quiz"
+    )
+    
+    await dbi["quiz_results"].create_index(
+        [("completed_at", DESCENDING)],
+        name="quiz_results_recent"
     )
 
     print("✅ MongoDB indexes initialized successfully")

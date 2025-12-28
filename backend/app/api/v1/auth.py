@@ -124,13 +124,27 @@ async def get_current_user_profile(current_user: dict = Depends(get_current_user
             detail="User not found"
         )
     
+    # Convert LearningProfile to LearningProfileResponse
+    learning_profile_response = None
+    if user.learning_profile:
+        learning_profile_response = LearningProfileResponse(
+            subjects=user.learning_profile.subjects or {},
+            total_study_hours=user.learning_profile.total_study_hours or 0.0,
+            total_quizzes_completed=user.learning_profile.total_quizzes_completed or 0,
+            total_objectives_completed=user.learning_profile.total_objectives_completed or 0,
+            learning_style=user.learning_profile.learning_style,
+            difficulty_preference=user.learning_profile.difficulty_preference,
+            streak_days=user.learning_profile.streak_days or 0,
+            last_active=user.learning_profile.last_active
+        )
+    
     return UserResponse(
         id=str(user.id),
         name=user.name,
         email=user.email,
         role=user.role,
         is_active=user.is_active,
-        learning_profile=user.learning_profile,
+        learning_profile=learning_profile_response,
         created_at=user.created_at,
         last_login=user.last_login
     )

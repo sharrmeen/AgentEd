@@ -78,6 +78,66 @@ class NotesService:
     # ============================
     
     @staticmethod
+    async def list_subject_notes(
+        *,
+        user_id: ObjectId,
+        subject_id: ObjectId,
+        chapter: str = None
+    ) -> list[Notes]:
+        """
+        List all notes for a subject, optionally filtered by chapter.
+        
+        Args:
+            user_id: Owner ID
+            subject_id: Subject FK
+            chapter: Optional chapter filter
+            
+        Returns:
+            List of Notes
+        """
+        notes_col = db.notes()
+        
+        query = {
+            "user_id": user_id,
+            "subject_id": subject_id
+        }
+        
+        if chapter:
+            query["chapter"] = chapter
+        
+        cursor = notes_col.find(query).sort("created_at", -1)
+        docs = await cursor.to_list(None)
+        return [Notes(**doc) for doc in docs]
+    
+    @staticmethod
+    async def get_note_by_id(
+        *,
+        user_id: ObjectId,
+        note_id: ObjectId
+    ) -> Notes | None:
+        """
+        Get a single note by ID.
+        
+        Args:
+            user_id: Owner ID
+            note_id: Note ID
+            
+        Returns:
+            Notes if found, None otherwise
+        """
+        notes_col = db.notes()
+        
+        doc = await notes_col.find_one({
+            "_id": note_id,
+            "user_id": user_id
+        })
+        
+        if not doc:
+            return None
+        
+        return Notes(**doc)
+    
+    @staticmethod
     async def get_notes_by_chapter(
         *,
         user_id: ObjectId,

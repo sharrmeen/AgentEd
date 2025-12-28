@@ -50,7 +50,7 @@ class Settings(BaseSettings):
     # API KEYS (set these in .env)
     # ============================
     TAVILY_API_KEY: Optional[str] = None
-    GOOGLE_API_KEY: Optional[str] = None
+    GEMINI_API_KEY: Optional[str] = None
     GEMINI_MODEL: str = "gemini-2.5-flash-lite"
 
     # ============================

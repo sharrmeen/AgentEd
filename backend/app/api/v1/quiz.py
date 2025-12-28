@@ -180,11 +180,18 @@ async def submit_quiz(
         )
     
     try:
+        # Build QuizSubmission object for service
+        from app.core.models.quiz import QuizSubmission
+        submission = QuizSubmission(
+            quiz_id=quiz_id,
+            answers=request.answers,
+            time_taken=None
+        )
+        
         # Submit quiz
         result = await QuizService.submit_quiz(
             user_id=user_id,
-            quiz_id=quiz_obj_id,
-            submission=request.answers,
+            submission=submission,
             started_at=request.started_at
         )
         
