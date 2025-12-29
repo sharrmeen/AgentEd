@@ -180,11 +180,16 @@ Question: {question}
 Subject: {subject_name}
 Session: {session_id or "No session"}
 
-Strategy:
-1. First try cache_lookup - if found, use cached answer
-2. Then try rag_retriever - search student's notes
-3. Only use web_search if notes don't have enough info
-4. Provide clear, educational answers"""
+IMPORTANT: Optimize for speed and cost:
+1. **FIRST**: Always try cache_lookup - if found, use it immediately and stop
+2. **THEN**: Try rag_retriever - if sufficient info found (>= 2 sources), synthesize and stop
+3. **ONLY IF NEEDED**: Use web_search for missing context
+
+Rules:
+- If cache has answer, use it directly without further tools
+- If RAG results are sufficient, do NOT call web_search
+- Provide clear, educational answers
+- Prefer student's own notes over web sources"""
 
         # Create agent using official v1 API
         agent = create_agent(
