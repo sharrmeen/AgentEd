@@ -88,6 +88,75 @@ async def generate_plan(
         )
 
 
+@router.post("/{subject_id}/regenerate", response_model=PlanResponse, status_code=status.HTTP_200_OK)
+async def regenerate_plan(
+    subject_id: str,
+    request: PlanGenerateRequest,
+    user_id: ObjectId = Depends(get_user_id)
+):
+    """
+    Regenerate a study plan for a subject (overwrites existing plan).
+    
+    Use this to create a new plan even if one already exists.
+    Resets all progress tracking.
+    
+    Prerequisites:
+    - Subject must exist
+    - Syllabus must be uploaded
+    
+    Args:
+        subject_id: Subject to plan
+        request: Plan generation parameters (target_days, daily_hours)
+        
+    Returns:
+        New study plan with chapter deadlines
+    """
+    try:
+        subject_obj_id = ObjectId(subject_id)
+    except Exception:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid subject ID format"
+        )
+    
+    try:
+        planner_state = await PlannerService.regenerate_plan(
+            user_id=user_id,
+            subject_id=subject_obj_id,
+            target_days=request.target_days,
+            daily_hours=request.daily_hours,
+            preferences=request.preferences
+        )
+        
+        # Fetch full subject to get plan
+        subject = await SubjectService.get_subject_by_id(
+            user_id=user_id,
+            subject_id=subject_obj_id
+        )
+        
+        # Convert planner_state to dict and convert ObjectId fields to strings
+        planner_dict = planner_state.dict()
+        planner_dict['id'] = str(planner_dict.get('_id', ''))
+        planner_dict['subject_id'] = str(planner_dict.get('subject_id', ''))
+        
+        return PlanResponse(
+            planner_state=PlannerStateResponse(**planner_dict),
+            study_plan=subject.plan if subject else {},
+            message="Study plan regenerated successfully"
+        )
+    
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e)
+        )
+
+
 @router.get("/{subject_id}", response_model=PlannerStateResponse)
 async def get_plan(
     subject_id: str,

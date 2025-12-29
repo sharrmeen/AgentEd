@@ -1,19 +1,21 @@
 # backend/app/agents/planner_agent.py
 
 """
-Study Plan Agent - LangChain v1 Compatible (Official Migration)
+Study Plan Agent - LangChain v1 Compatible with PydanticOutputParser
 
-Uses langchain.agents.create_agent instead of deprecated patterns.
+Uses langchain.agents.create_agent and structured output parsing.
 """
 
 import os
-import json
 from bson import ObjectId
-from typing import Dict
+from typing import Dict, List
+from pydantic import BaseModel, Field
 
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain.agents import create_agent
 from langchain.tools import tool
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.output_parsers import PydanticOutputParser
 
 from app.agents.orchestration.state import AgentEdState
 from app.services.planner_service import PlannerService
@@ -30,9 +32,28 @@ llm = ChatGoogleGenerativeAI(
     google_api_key=os.getenv("GEMINI_API_KEY")
 )
 
+
 # ============================
-# CORE FUNCTION (SERVICE-SAFE, NO TOOLS)
-# =============================
+# OUTPUT SCHEMAS (For PydanticOutputParser)
+# ============================
+
+class Chapter(BaseModel):
+    """Single chapter in study plan."""
+    chapter_number: int = Field(description="Sequential chapter number starting from 1")
+    title: str = Field(description="Chapter title (max 50 chars)")
+    objectives: List[str] = Field(min_items=1, max_items=5, description="Learning objectives")
+    estimated_hours: float = Field(description="Hours to complete this chapter")
+    topics: List[str] = Field(default_factory=list, description="Key topics")
+
+
+class StudyPlanOutput(BaseModel):
+    """Complete study plan output."""
+    chapters: List[Chapter] = Field(min_items=1, max_items=20, description="All chapters")
+
+
+# ============================
+# CORE FUNCTION (WITH LANGCHAIN PARSER)
+# ============================
 
 async def generate_study_plan_core(
     *,
@@ -43,8 +64,10 @@ async def generate_study_plan_core(
     user_preferences: Dict
 ) -> Dict:
     """
-    Core planner logic - uses LLM to parse syllabus and generate chapters.
+    Core planner logic - uses LangChain PydanticOutputParser.
     Called by services, not by agent tools.
+    
+    Returns dict with meta and chapters structure.
     """
     
     # If user provided chapters override, use those
@@ -56,10 +79,15 @@ async def generate_study_plan_core(
             "chapters": user_preferences.get("chapters_override", [])
         }
     
-    # Use LLM to parse syllabus and generate study plan
     total_hours = target_days * daily_hours
     
-    prompt = f"""You are an expert curriculum designer. Analyze the following OCR syllabus text and create a structured study plan.
+    # Create parser with structured output schema
+    parser = PydanticOutputParser(pydantic_object=StudyPlanOutput)
+    format_instructions = parser.get_format_instructions()
+    
+    # Create prompt with format instructions from parser
+    prompt = ChatPromptTemplate.from_template(
+        """You are an expert curriculum designer. Analyze the following OCR syllabus text and create a structured study plan.
 
 SUBJECT: {subject_name}
 TOTAL HOURS AVAILABLE: {total_hours} hours
@@ -69,19 +97,6 @@ DAILY STUDY: {daily_hours} hours/day
 SYLLABUS TEXT:
 {syllabus_text}
 
-Create a JSON study plan with the following structure:
-{{
-    "chapters": [
-        {{
-            "chapter_number": 1,
-            "title": "Chapter Title",
-            "objectives": ["Objective 1", "Objective 2", "Objective 3"],
-            "estimated_hours": 4.5,
-            "topics": ["Topic 1", "Topic 2"]
-        }}
-    ]
-}}
-
 Rules:
 1. Extract logical chapters/sections from the syllabus (aim for 5-15 chapters)
 2. Each chapter should have 3-5 learning objectives
@@ -89,64 +104,51 @@ Rules:
 4. Number chapters sequentially starting from 1
 5. Focus on topics that are critical for learning
 6. For mathematical/technical subjects, include prerequisite concepts early
-7. Return ONLY the JSON, no markdown, no explanations
+7. Keep chapter titles concise (max 50 characters)
+8. Keep objective descriptions brief and actionable
 
-IMPORTANT: Return only valid JSON, starting with {{ and ending with }}."""
-
+{format_instructions}"""
+    )
+    
     try:
-        # Call LLM
-        response = await llm.ainvoke(prompt)
+        # Create chain: prompt -> llm -> parser
+        chain = prompt | llm | parser
         
-        # Extract JSON from response
-        response_text = response.content if hasattr(response, 'content') else str(response)
+        # Invoke chain asynchronously
+        result = await chain.ainvoke({
+            "subject_name": subject_name,
+            "total_hours": total_hours,
+            "target_days": target_days,
+            "daily_hours": daily_hours,
+            "syllabus_text": syllabus_text,
+            "format_instructions": format_instructions
+        })
         
-        # Try to parse JSON from response
-        try:
-            # Find JSON in response (in case LLM adds extra text)
-            import re
-            json_match = re.search(r'\{{[\s\S]*\}}', response_text)
-            if json_match:
-                plan_json = json.loads(json_match.group())
-            else:
-                plan_json = json.loads(response_text)
-            
-            # Validate structure
-            if "chapters" not in plan_json or not isinstance(plan_json["chapters"], list):
-                raise ValueError("Invalid JSON structure: missing chapters array")
-            
-            # Ensure each chapter has required fields
-            for chapter in plan_json["chapters"]:
-                if "chapter_number" not in chapter:
-                    chapter["chapter_number"] = plan_json["chapters"].index(chapter) + 1
-                if "title" not in chapter:
-                    chapter["title"] = f"Chapter {chapter['chapter_number']}"
-                if "objectives" not in chapter:
-                    chapter["objectives"] = ["Master key concepts", "Practice problems", "Review"]
-                if "estimated_hours" not in chapter:
-                    chapter["estimated_hours"] = round(total_hours / len(plan_json["chapters"]), 1)
-                if "topics" not in chapter:
-                    chapter["topics"] = []
-            
-        except (json.JSONDecodeError, ValueError) as e:
-            # Fallback: create basic chapters from syllabus sections
-            print(f"⚠️ Failed to parse LLM response as JSON: {e}. Creating fallback plan.")
-            plan_json = _create_fallback_plan(syllabus_text, subject_name, total_hours)
+        # Validate chapters
+        if not result.chapters:
+            raise ValueError("No chapters generated by parser")
+        
+        # Convert to dict format for service compatibility
+        chapters_dict = [chapter.model_dump() for chapter in result.chapters]
+        
+        print(f"✅ Study plan generated: {len(chapters_dict)} chapters")
         
         return {
             "meta": {
                 "total_hours": total_hours
             },
-            "chapters": plan_json.get("chapters", [])
+            "chapters": chapters_dict
         }
     
     except Exception as e:
-        print(f"❌ LLM Plan Generation Error: {e}")
-        # Fallback: create basic plan
+        print(f"⚠️ LLM parsing failed: {e}. Using fallback plan.")
+        # Fallback: create basic chapters from syllabus sections
+        fallback = _create_fallback_plan(syllabus_text, subject_name, total_hours)
         return {
             "meta": {
                 "total_hours": total_hours
             },
-            "chapters": _create_fallback_plan(syllabus_text, subject_name, total_hours).get("chapters", [])
+            "chapters": fallback.get("chapters", [])
         }
 
 
@@ -190,12 +192,12 @@ def _create_fallback_plan(syllabus_text: str, subject_name: str, total_hours: fl
     hours_per_chapter = round(total_hours / num_chapters, 1)
     
     chapters = []
-    for i, section in enumerate(sections):
+    for i, section in enumerate(sections[:20]):  # Limit to 20 chapters
         chapter = {
             "chapter_number": i + 1,
-            "title": section.get('title', f"Chapter {i + 1}: {subject_name}"),
+            "title": section.get('title', f"Chapter {i + 1}: {subject_name}")[:50],  # Limit title length
             "objectives": [
-                f"Understand key concepts in {section.get('title', 'this section')}",
+                f"Understand key concepts in {section.get('title', 'this section')[:30]}",
                 f"Apply knowledge practically",
                 f"Solve related problems"
             ],
@@ -204,6 +206,7 @@ def _create_fallback_plan(syllabus_text: str, subject_name: str, total_hours: fl
         }
         chapters.append(chapter)
     
+    print(f"⚠️ Using fallback plan: {len(chapters)} chapters")
     return {"chapters": chapters}
 
 
@@ -322,7 +325,7 @@ def mark_objective_complete(user_id: str, subject_id: str, chapter_number: int, 
         return message
     
     except Exception as e:
-        return f"Error marking objective: {str(e)}"
+        return f"❌ Error marking objective: {str(e)}"
 
 
 tools = [generate_study_plan, check_progress, mark_objective_complete]
@@ -336,7 +339,7 @@ async def study_plan_node(state: AgentEdState) -> Dict:
     """
     LangGraph node for study planning.
     Uses official LangChain v1 create_agent.
-    INPUT/OUTPUT: Unchanged - fully compatible
+    INPUT/OUTPUT: Fully compatible with existing workflow.
     """
     
     print("--- 📋 STUDY PLAN AGENT: Working... ---")

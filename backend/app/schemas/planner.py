@@ -68,15 +68,13 @@ class ChapterDeadline(BaseModel):
 
 class ChapterProgressResponse(BaseModel):
     """Chapter progress response."""
-    chapter_number: int
-    chapter_title: str
-    completed_objectives: List[str]
-    total_objectives: int
-    progress_percent: float
-    is_complete: bool
-    deadline: Optional[datetime] = None
+    completed_objectives: List[str] = []
+    total_objectives: int = 0
+    is_complete: bool = False
     started_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
+    deadline: Optional[datetime] = None
+    estimated_hours: float = 0.0
 
 
 class ObjectiveCompleteResponse(BaseModel):
@@ -103,8 +101,8 @@ class PlannerStateResponse(BaseModel):
     completed_chapters: List[int]
     completion_percent: float
     
-    # Chapter progress
-    chapter_progress: Dict[str, ChapterProgressResponse]
+    # Chapter progress - flexible dict structure
+    chapter_progress: Dict[str, Any] = {}
     
     # Auto-replanning
     last_replanned_at: Optional[datetime] = None
