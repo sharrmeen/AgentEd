@@ -43,16 +43,168 @@ async def generate_study_plan_core(
     user_preferences: Dict
 ) -> Dict:
     """
-    Core planner logic - called by services, not by agent.
-    This is pure, deterministic, and LLM-free.
+    Core planner logic - uses LLM to parse syllabus and generate chapters.
+    Called by services, not by agent tools.
     """
-    # Placeholder: In production, integrate with LLM for chapter generation
-    return {
-        "meta": {
-            "total_hours": target_days * daily_hours
-        },
-        "chapters": user_preferences.get("chapters_override", [])
-    }
+    
+    # If user provided chapters override, use those
+    if user_preferences.get("chapters_override"):
+        return {
+            "meta": {
+                "total_hours": target_days * daily_hours
+            },
+            "chapters": user_preferences.get("chapters_override", [])
+        }
+    
+    # Use LLM to parse syllabus and generate study plan
+    total_hours = target_days * daily_hours
+    
+    prompt = f"""You are an expert curriculum designer. Analyze the following OCR syllabus text and create a structured study plan.
+
+SUBJECT: {subject_name}
+TOTAL HOURS AVAILABLE: {total_hours} hours
+TARGET DAYS: {target_days} days
+DAILY STUDY: {daily_hours} hours/day
+
+SYLLABUS TEXT:
+{syllabus_text}
+
+Create a JSON study plan with the following structure:
+{{
+    "chapters": [
+        {{
+            "chapter_number": 1,
+            "title": "Chapter Title",
+            "objectives": ["Objective 1", "Objective 2", "Objective 3"],
+            "estimated_hours": 4.5,
+            "topics": ["Topic 1", "Topic 2"]
+        }}
+    ]
+}}
+
+Rules:
+1. Extract logical chapters/sections from the syllabus (aim for 5-15 chapters)
+2. Each chapter should have 3-5 learning objectives
+3. Distribute hours evenly across chapters (total must equal {total_hours})
+4. Number chapters sequentially starting from 1
+5. Focus on topics that are critical for learning
+6. For mathematical/technical subjects, include prerequisite concepts early
+7. Return ONLY the JSON, no markdown, no explanations
+
+IMPORTANT: Return only valid JSON, starting with {{ and ending with }}."""
+
+    try:
+        # Call LLM
+        response = await llm.ainvoke(prompt)
+        
+        # Extract JSON from response
+        response_text = response.content if hasattr(response, 'content') else str(response)
+        
+        # Try to parse JSON from response
+        try:
+            # Find JSON in response (in case LLM adds extra text)
+            import re
+            json_match = re.search(r'\{{[\s\S]*\}}', response_text)
+            if json_match:
+                plan_json = json.loads(json_match.group())
+            else:
+                plan_json = json.loads(response_text)
+            
+            # Validate structure
+            if "chapters" not in plan_json or not isinstance(plan_json["chapters"], list):
+                raise ValueError("Invalid JSON structure: missing chapters array")
+            
+            # Ensure each chapter has required fields
+            for chapter in plan_json["chapters"]:
+                if "chapter_number" not in chapter:
+                    chapter["chapter_number"] = plan_json["chapters"].index(chapter) + 1
+                if "title" not in chapter:
+                    chapter["title"] = f"Chapter {chapter['chapter_number']}"
+                if "objectives" not in chapter:
+                    chapter["objectives"] = ["Master key concepts", "Practice problems", "Review"]
+                if "estimated_hours" not in chapter:
+                    chapter["estimated_hours"] = round(total_hours / len(plan_json["chapters"]), 1)
+                if "topics" not in chapter:
+                    chapter["topics"] = []
+            
+        except (json.JSONDecodeError, ValueError) as e:
+            # Fallback: create basic chapters from syllabus sections
+            print(f"⚠️ Failed to parse LLM response as JSON: {e}. Creating fallback plan.")
+            plan_json = _create_fallback_plan(syllabus_text, subject_name, total_hours)
+        
+        return {
+            "meta": {
+                "total_hours": total_hours
+            },
+            "chapters": plan_json.get("chapters", [])
+        }
+    
+    except Exception as e:
+        print(f"❌ LLM Plan Generation Error: {e}")
+        # Fallback: create basic plan
+        return {
+            "meta": {
+                "total_hours": total_hours
+            },
+            "chapters": _create_fallback_plan(syllabus_text, subject_name, total_hours).get("chapters", [])
+        }
+
+
+def _create_fallback_plan(syllabus_text: str, subject_name: str, total_hours: float) -> Dict:
+    """
+    Fallback: Create basic chapter structure from syllabus text.
+    Used when LLM fails or returns invalid JSON.
+    """
+    # Split by common section markers
+    sections = []
+    lines = syllabus_text.split('\n')
+    
+    current_section = None
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+        
+        # Look for numbered sections or common chapter markers
+        if any(marker in line for marker in ['Section', 'Cycle', 'Chapter', 'Unit', 'Module', 'Part']):
+            if current_section:
+                sections.append(current_section)
+            current_section = {'title': line, 'topics': []}
+        elif current_section and line and not line.startswith(('Note:', 'Course', 'Curriculum')):
+            # Add topics to current section
+            current_section['topics'].append(line[:100])  # Limit topic length
+    
+    if current_section:
+        sections.append(current_section)
+    
+    # If no sections found, create default chapters
+    if not sections:
+        sections = [
+            {'title': f"{subject_name} - Part 1", 'topics': []},
+            {'title': f"{subject_name} - Part 2", 'topics': []},
+            {'title': f"{subject_name} - Part 3", 'topics': []}
+        ]
+    
+    # Create chapters from sections
+    num_chapters = max(3, len(sections))
+    hours_per_chapter = round(total_hours / num_chapters, 1)
+    
+    chapters = []
+    for i, section in enumerate(sections):
+        chapter = {
+            "chapter_number": i + 1,
+            "title": section.get('title', f"Chapter {i + 1}: {subject_name}"),
+            "objectives": [
+                f"Understand key concepts in {section.get('title', 'this section')}",
+                f"Apply knowledge practically",
+                f"Solve related problems"
+            ],
+            "estimated_hours": hours_per_chapter,
+            "topics": section.get('topics', [])[:5]  # Top 5 topics
+        }
+        chapters.append(chapter)
+    
+    return {"chapters": chapters}
 
 
 # ============================
