@@ -66,8 +66,13 @@ async def generate_plan(
             subject_id=subject_obj_id
         )
         
+        # Convert planner_state to dict and convert ObjectId fields to strings
+        planner_dict = planner_state.dict()
+        planner_dict['id'] = str(planner_dict.get('_id', ''))
+        planner_dict['subject_id'] = str(planner_dict.get('subject_id', ''))
+        
         return PlanResponse(
-            planner_state=PlannerStateResponse(**planner_state.dict()),
+            planner_state=PlannerStateResponse(**planner_dict),
             study_plan=subject.plan if subject else {}
         )
     
@@ -117,7 +122,12 @@ async def get_plan(
                 detail="Study plan not found. Please generate a plan first."
             )
         
-        return PlannerStateResponse(**planner_state.dict())
+        # Convert planner_state to dict and convert ObjectId fields to strings
+        planner_dict = planner_state.dict()
+        planner_dict['id'] = str(planner_dict.get('_id', ''))
+        planner_dict['subject_id'] = str(planner_dict.get('subject_id', ''))
+        
+        return PlannerStateResponse(**planner_dict)
     
     except Exception as e:
         if isinstance(e, HTTPException):
@@ -165,7 +175,13 @@ async def mark_objective_complete(
             chapter_completed=result.get("chapter_completed", False),
             replanned=result.get("replanned", False),
             message=result.get("message", "Objective marked complete"),
-            planner_state=PlannerStateResponse(**result["planner_state"].dict())
+            planner_state=PlannerStateResponse(
+                **{
+                    **result["planner_state"].dict(),
+                    'id': str(result["planner_state"]._id),
+                    'subject_id': str(result["planner_state"].subject_id)
+                }
+            )
         )
     
     except ValueError as e:

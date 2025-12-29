@@ -123,7 +123,7 @@ async def generate_study_plan(
         Study plan
     """
     request = AgentQueryRequest(
-        query=f"Generate a {target_days}-day study plan with {daily_hours} hours per day",
+        query=f"Generate a clear and realistic {target_days}-day study plan with {daily_hours} hours per day for this subject.\n",
         subject_id=subject_id,
         constraints={
             "target_days": target_days,
@@ -156,7 +156,7 @@ async def generate_quiz(
     """
     chapter_ref = f" on Chapter {chapter_number}" if chapter_number else ""
     request = AgentQueryRequest(
-        query=f"Generate a {num_questions}-question quiz{chapter_ref}",
+        query=f"Generate a {num_questions}-question quiz for this subject suitable for school and college students.Include a mix of easy, medium, and challenging questions.{chapter_ref}",
         subject_id=subject_id,
         chapter_number=chapter_number,
         constraints={

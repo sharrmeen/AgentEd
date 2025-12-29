@@ -259,7 +259,7 @@ class IngestionService:
             loop = asyncio.get_event_loop()
             page_text = await loop.run_in_executor(
                 None, 
-                extract_tex, 
+                extract_text, 
                 temp_image_path
             )
             

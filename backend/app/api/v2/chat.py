@@ -109,7 +109,7 @@ async def explain_concept(
         Explanation
     """
     request = AgentChatRequest(
-        query=f"Explain {concept}",
+        query=f"Explain {concept} clearly, focusing on understanding the concept rather than memorization. Use examples where appropriate.\n{concept}",
         subject_id=subject_id,
         chapter_number=chapter_number,
         session_id=session_id,
@@ -128,7 +128,7 @@ async def summarize_content(
     user_id: ObjectId = Depends(get_user_id)
 ):
     """
-    Ask agent to summarize a topic.
+    Ask agent to summarize a topic especially for quick revision notes for students.
     
     Shortcut endpoint with specific intent.
     
@@ -142,7 +142,7 @@ async def summarize_content(
         Summary
     """
     request = AgentChatRequest(
-        query=f"Summarize {topic}",
+        query=f"Summarize {topic} as quick revision notes for students, using simple language and bullet points where helpful.",
         subject_id=subject_id,
         chapter_number=chapter_number,
         session_id=session_id,
@@ -152,8 +152,8 @@ async def summarize_content(
     return await agent_chat(request, user_id)
 
 
-@router.post("/practice")
-async def get_practice_tips(
+@router.post("/answer")
+async def get_structured_answer(
     topic: str,
     subject_id: str,
     chapter_number: int,
@@ -161,21 +161,41 @@ async def get_practice_tips(
     user_id: ObjectId = Depends(get_user_id)
 ):
     """
-    Ask agent for practice tips on a topic.
+    Get a comprehensive structured answer on a topic.
     
-    Shortcut endpoint with specific intent.
+    Provides in-depth explanation with proper format.
     
     Args:
-        topic: Topic to practice
+        topic: Topic to explain
         subject_id: Subject context
         chapter_number: Chapter context
         session_id: Session for memory
         
     Returns:
-        Practice suggestions
+        Structured answer with sections
     """
+    structured_format = """
+    Please provide a comprehensive answer on '{topic}' in the following structured format:
+
+    1. **Definition / Introduction**: What the topic is, explained in simple, clear language
+    
+    2. **Why Do We Need This?**: Purpose of the concept, problem it solves, why students should learn it
+    
+    3. **Core Idea / Key Concept**: Main principle behind the topic, theory or logic in simple terms
+    
+    4. **Structure / Components / Architecture**: Parts, layers, or elements involved (skip or simplify if not needed)
+    
+    5. **Working / How It Works**: Step-by-step explanation, flow or process description
+    
+    6. **Advantages**: Benefits, strengths, why it is useful
+    
+    7. **Disadvantages / Limitations**: Drawbacks, where it doesn't work well
+    
+    8. **Example / Real-Life Illustration**: Practical examples or real-world applications
+    """
+    
     request = AgentChatRequest(
-        query=f"Give me practice tips for {topic}",
+        query=structured_format.format(topic=topic),
         subject_id=subject_id,
         chapter_number=chapter_number,
         session_id=session_id,

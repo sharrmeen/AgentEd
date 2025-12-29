@@ -30,9 +30,33 @@ llm = ChatGoogleGenerativeAI(
     google_api_key=os.getenv("GEMINI_API_KEY")
 )
 
+# ============================
+# CORE FUNCTION (SERVICE-SAFE, NO TOOLS)
+# =============================
+
+async def generate_study_plan_core(
+    *,
+    syllabus_text: str,
+    subject_name: str,
+    target_days: int,
+    daily_hours: float,
+    user_preferences: Dict
+) -> Dict:
+    """
+    Core planner logic - called by services, not by agent.
+    This is pure, deterministic, and LLM-free.
+    """
+    # Placeholder: In production, integrate with LLM for chapter generation
+    return {
+        "meta": {
+            "total_hours": target_days * daily_hours
+        },
+        "chapters": user_preferences.get("chapters_override", [])
+    }
+
 
 # ============================
-# TOOLS (Using @tool decorator - official way)
+# TOOLS (LLM-FACING ONLY)
 # ============================
 
 @tool
@@ -57,22 +81,29 @@ def generate_study_plan(user_id: str, subject_id: str, target_days: int = 30, da
             )
         )
         
-        chapters = subject.plan.get("chapters", [])
+        # Handle both Pydantic model and dict
+        subject_plan = subject.plan if hasattr(subject, 'plan') else subject.get('plan', {})
+        chapters = subject_plan.get("chapters", []) if isinstance(subject_plan, dict) else []
         chapter_list = "\n".join([
             f"Chapter {ch['chapter_number']}: {ch['title']} ({ch['estimated_hours']}h)"
             for ch in chapters
         ])
         
-        return f"""Study plan generated successfully!
-Total Chapters: {result.total_chapters}
-Target Days: {result.target_days}
-Daily Hours: {result.daily_hours}
+        # Handle both Pydantic model and dict
+        total_chapters = result.total_chapters if hasattr(result, 'total_chapters') else result.get('total_chapters')
+        target = result.target_days if hasattr(result, 'target_days') else result.get('target_days')
+        hours = result.daily_hours if hasattr(result, 'daily_hours') else result.get('daily_hours')
+        
+        return f"""✅ Study plan generated successfully!
+Total Chapters: {total_chapters}
+Target Days: {target}
+Daily Hours: {hours}
 
 Chapters:
 {chapter_list}"""
     
     except Exception as e:
-        return f"Error generating plan: {str(e)}"
+        return f"❌ Error generating plan: {str(e)}"
 
 
 @tool
@@ -89,19 +120,24 @@ def check_progress(user_id: str, subject_id: str) -> str:
         )
         
         if not result:
-            return "No study plan found. Generate one first."
+            return "❌ No study plan found. Generate one first."
         
-        completed = len(result.completed_chapters)
-        total = result.total_chapters
-        percent = result.completion_percent
+        # Handle both Pydantic model and dict
+        completed_chapters = result.completed_chapters if hasattr(result, 'completed_chapters') else result.get('completed_chapters', [])
+        total_chapters = result.total_chapters if hasattr(result, 'total_chapters') else result.get('total_chapters')
+        completion_percent = result.completion_percent if hasattr(result, 'completion_percent') else result.get('completion_percent')
+        current_chapter = result.current_chapter if hasattr(result, 'current_chapter') else result.get('current_chapter')
+        next_suggestion = result.next_suggestion if hasattr(result, 'next_suggestion') else result.get('next_suggestion')
         
-        return f"""Progress Report:
-Completed: {completed}/{total} chapters ({percent}%)
-Current Chapter: {result.current_chapter}
-Next Suggestion: {result.next_suggestion}"""
+        completed = len(completed_chapters)
+        
+        return f"""📊 Progress Report:
+Completed: {completed}/{total_chapters} chapters ({completion_percent}%)
+Current Chapter: {current_chapter}
+Next Suggestion: {next_suggestion}"""
     
     except Exception as e:
-        return f"Error checking progress: {str(e)}"
+        return f"❌ Error checking progress: {str(e)}"
 
 
 @tool
@@ -121,10 +157,14 @@ def mark_objective_complete(user_id: str, subject_id: str, chapter_number: int, 
         
         message = "✅ Objective marked complete."
         
-        if result.get("chapter_completed"):
+        # Handle both dict and Pydantic model
+        chapter_completed = result.get("chapter_completed") if isinstance(result, dict) else result.chapter_completed
+        replanned = result.get("replanned") if isinstance(result, dict) else result.replanned
+        
+        if chapter_completed:
             message += "\n🎉 Chapter completed! All objectives done."
         
-        if result.get("replanned"):
+        if replanned:
             message += "\n⚠️ Deadline missed. Plan automatically adjusted."
         
         return message

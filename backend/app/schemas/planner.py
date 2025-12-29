@@ -6,7 +6,8 @@ Planner schemas for study plan generation and progress tracking.
 
 from datetime import datetime
 from typing import Optional, Dict, List, Any
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+from bson import ObjectId
 
 
 # ============================
@@ -113,6 +114,14 @@ class PlannerStateResponse(BaseModel):
     # Recommendations
     next_suggestion: str = ""
     study_pace: str = "on_track"
+    
+    @field_validator('id', 'subject_id', mode='before')
+    @classmethod
+    def convert_objectid_to_str(cls, v):
+        """Convert ObjectId to string."""
+        if isinstance(v, ObjectId):
+            return str(v)
+        return v
     
     created_at: datetime
     updated_at: datetime

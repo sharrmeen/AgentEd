@@ -73,10 +73,10 @@ class PlannerService:
             "_id": subject.syllabus_id
         })
         
-        # Call Planner Agent
-        from agents.planner_agent import generate_study_plan
+        # Call Planner Agent Core Function (NOT tool)
+        from app.agents.planner_agent import generate_study_plan_core
         
-        plan_output = await generate_study_plan(
+        plan_output = await generate_study_plan_core(
             syllabus_text=syllabus["raw_text"],
             subject_name=subject.subject_name,
             target_days=target_days,
@@ -334,12 +334,12 @@ class PlannerService:
         subject = await subjects_col.find_one({"_id": subject_id})
         syllabus = await syllabus_col.find_one({"_id": subject["syllabus_id"]})
         
-        # Call Planner Agent with ADJUSTED timeline
-        from agents.planner_agent import generate_study_plan
+        # Call Planner Agent Core Function (NOT tool)
+        from app.agents.planner_agent import generate_study_plan_core
         
         print(f"🔄 Replanning with {remaining_days} days for {remaining_chapters} chapters...")
         
-        new_plan_output = await generate_study_plan(
+        new_plan_output = await generate_study_plan_core(
             syllabus_text=syllabus["raw_text"],
             subject_name=subject["subject_name"],
             target_days=remaining_days,
