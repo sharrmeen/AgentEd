@@ -104,33 +104,52 @@ def rag_retriever(user_id: str, question: str, subject: str = None, chapter: str
 
 @tool
 def web_search(query: str) -> str:
-    """Search the web for recent or factual information."""
+    """
+    Search the web for factual or educational information
+    and return content suitable for student explanations.
+    
+    Retrieves raw content from sources for better context and accuracy.
+    """
     if not TAVILY_AVAILABLE:
-        return "Web search not available. Tavily not installed."
+        return "Web search not available. Tavily is not installed."
     
     try:
-        tavily_client = TavilyClient(api_key=os.getenv("TAVILY_API_KEY"))
+        tavily_client = TavilyClient(
+            api_key=os.getenv("TAVILY_API_KEY")
+        )
         
         response = tavily_client.search(
-            query=query,
+            query=f"Explain {query} with examples for students",
             search_depth="basic",
-            max_results=3
+            max_results=5,
+            include_raw_content=True
         )
         
         results = response.get("results", [])
-        
         if not results:
             return "No web results found."
         
-        formatted = []
-        for i, result in enumerate(results, 1):
-            formatted.append(
-                f"{i}. {result.get('title', 'No title')}\n"
-                f"   {result.get('content', 'No content')}\n"
-                f"   Source: {result.get('url', 'No URL')}"
+        formatted_results = []
+        
+        for i, result in enumerate(results, start=1):
+            # Prioritize raw_content for better LLM context
+            content = (
+                result.get("raw_content")
+                or result.get("content")
+                or "No content available."
+            )
+            
+            # Limit content length to avoid token overflow
+            if len(content) > 500:
+                content = content[:500] + "..."
+            
+            formatted_results.append(
+                f"Source {i}: {result.get('title', 'No title')}\n"
+                f"URL: {result.get('url', 'No URL')}\n"
+                f"Content:\n{content}"
             )
         
-        return "\n\n".join(formatted)
+        return "\n\n---\n\n".join(formatted_results)
     
     except Exception as e:
         return f"Web search error: {str(e)}"
@@ -174,22 +193,42 @@ async def resource_agent_node(state: AgentEdState) -> Dict:
     
     try:
         # Build system prompt (official v1 way)
-        system_prompt = f"""You are a knowledgeable study assistant.
+        system_prompt = f"""You are a knowledgeable study assistant answering student questions.
 
-Question: {question}
-Subject: {subject_name}
-Session: {session_id or "No session"}
+CONTEXT PROVIDED:
+- Question: {question}
+- Subject: {subject_name}
+- Session: {session_id or "No session"}
+- You already have all the information you need. Do NOT ask for user ID or more details.
 
-IMPORTANT: Optimize for speed and cost:
-1. **FIRST**: Always try cache_lookup - if found, use it immediately and stop
-2. **THEN**: Try rag_retriever - if sufficient info found (>= 2 sources), synthesize and stop
-3. **ONLY IF NEEDED**: Use web_search for missing context
+YOUR TASK: Answer the question "{question}" using available tools.
 
-Rules:
-- If cache has answer, use it directly without further tools
-- If RAG results are sufficient, do NOT call web_search
-- Provide clear, educational answers
-- Prefer student's own notes over web sources"""
+TOOL EXECUTION STRATEGY (FOLLOW STRICTLY):
+1. **FIRST**: Call cache_lookup to check if this question was answered before
+   - If [CACHED] result found → Use it IMMEDIATELY and provide the answer
+   - Do NOT call other tools if cache hit
+   
+2. **IF NO CACHE**: Call rag_retriever to search student's uploaded notes
+   - If you get 2+ good sources → Synthesize answer and STOP
+   - Do NOT call web_search if RAG has sufficient info
+   
+3. **ONLY IF RAG INSUFFICIENT**: Call web_search for missing information
+   - Only if RAG found nothing relevant
+   - Use web_search results to supplement
+
+IMPORTANT RULES:
+- ✅ Use tools - don't just talk
+- ✅ Provide complete answer from tool results
+- ✅ Be educational and clear
+- ✅ Cite sources when using multiple tools
+- ❌ Do NOT ask for more information
+- ❌ Do NOT ask for user ID
+- ❌ Do NOT skip tools and just chat
+
+RESPONSE FORMAT:
+Provide a clear, complete answer to: "{question}"
+Focus on the subject: {subject_name}
+Minimize tool calls - stop as soon as you have enough information."""
 
         # Create agent using official v1 API
         agent = create_agent(
@@ -210,22 +249,8 @@ Rules:
         else:
             answer = getattr(result, "content", "I couldn't find an answer to that question.")
         
-        # Store in cache if session exists
-        if session_id and subject_id:
-            try:
-                await ChatMemoryService.store_memory(
-                    user_id=ObjectId(user_id),
-                    subject_id=ObjectId(subject_id),
-                    session_id=ObjectId(session_id),
-                    chat_id=ObjectId(session_id),
-                    question=question,
-                    answer=answer,
-                    intent_tag="Answer",
-                    confidence_score=0.9,
-                    source="AGENT"
-                )
-            except:
-                pass
+        # NOTE: Message storage is handled by the chat endpoint (chat_service)
+        # Agent stores are only for updating cached context if needed
         
         next_step = "END"
         if "quiz" in question.lower():

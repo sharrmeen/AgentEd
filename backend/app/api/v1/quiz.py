@@ -9,7 +9,9 @@ from bson import ObjectId
 from typing import Optional
 
 from app.services.quiz_service import QuizService
+from app.agents.orchestration.workflow import run_workflow
 from app.schemas.quiz import (
+    QuizGenerateRequest,
     QuizResponse,
     QuizListResponse,
     QuizSubmitRequest,
@@ -19,6 +21,109 @@ from app.schemas.quiz import (
 from app.api.deps import get_user_id
 
 router = APIRouter()
+
+
+@router.post("", response_model=QuizResponse, status_code=status.HTTP_201_CREATED)
+async def generate_quiz(
+    request: QuizGenerateRequest,
+    user_id: ObjectId = Depends(get_user_id)
+):
+    """
+    Generate a new quiz for a subject/chapter.
+    
+    Prerequisites:
+    - Subject must exist
+    - Study plan must be generated (for chapter context)
+    
+    Args:
+        request: Quiz generation parameters
+        - subject_id: Subject ID
+        - chapter_number: Chapter to quiz on (optional)
+        - num_questions: Number of questions (1-50, default 10)
+        - quiz_type: "practice" | "revision" | "mock_exam"
+        - difficulty: "easy" | "medium" | "hard" | "mixed" (optional)
+    
+    Returns:
+        Generated quiz ready to take
+    """
+    try:
+        subject_obj_id = ObjectId(request.subject_id)
+    except Exception:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid subject ID format"
+        )
+    
+    try:
+        # Use agent workflow to generate quiz
+        workflow_result = await run_workflow(
+            user_id=str(user_id),
+            user_query=f"Generate a {request.quiz_type} quiz with {request.num_questions} questions",
+            subject_id=request.subject_id,
+            chapter_number=request.chapter_number,
+            constraints={
+                "num_questions": request.num_questions,
+                "quiz_type": request.quiz_type,
+                "difficulty": request.difficulty or "mixed"
+            }
+        )
+        
+        # Extract quiz from workflow result
+        quiz_data = workflow_result.get("quiz")
+        if not quiz_data:
+            raise ValueError("Failed to generate quiz from workflow")
+        
+        # Store quiz in database
+        quiz = await QuizService.create_quiz(
+            user_id=user_id,
+            subject_id=subject_obj_id,
+            subject_name=workflow_result.get("subject_name", "Unknown"),
+            chapter_number=request.chapter_number,
+            chapter_title=workflow_result.get("chapter_title", f"Chapter {request.chapter_number}"),
+            quiz_data=quiz_data,
+            quiz_type=request.quiz_type
+        )
+        
+        # Convert questions to response format
+        question_responses = [
+            {
+                "question_id": str(q.get("question_id")),
+                "question_number": q.get("question_number", i+1),
+                "text": q.get("text", q.get("question_text", "")),
+                "question_type": q.get("question_type", "mcq"),
+                "options": q.get("options", []),
+                "difficulty": q.get("difficulty", "medium"),
+                "marks": q.get("marks", 1)
+            }
+            for i, q in enumerate(quiz_data.get("questions", []))
+        ]
+        
+        return QuizResponse(
+            id=str(quiz.id) if hasattr(quiz, 'id') else str(quiz.get("_id")),
+            subject_id=request.subject_id,
+            subject=workflow_result.get("subject_name", "Unknown"),
+            chapter=f"Chapter {request.chapter_number}" if request.chapter_number else "General",
+            chapter_number=request.chapter_number,
+            title=quiz_data.get("title", f"{request.quiz_type.title()} Quiz"),
+            description=f"{request.num_questions} questions • {request.difficulty or 'mixed'} difficulty",
+            quiz_type=request.quiz_type,
+            questions=question_responses,
+            total_marks=quiz_data.get("total_marks", request.num_questions),
+            time_limit=request.num_questions * 3,  # 3 minutes per question
+            pass_percentage=60.0,
+            created_at=quiz.get("created_at") if isinstance(quiz, dict) else quiz.created_at
+        )
+    
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to generate quiz: {str(e)}"
+        )
 
 
 @router.get("/{quiz_id}", response_model=QuizResponse)

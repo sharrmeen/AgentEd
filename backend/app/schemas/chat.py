@@ -52,14 +52,17 @@ class ChatHistoryItem(BaseModel):
 
 
 class ChatHistoryResponse(BaseModel):
-    """Chat history response."""
+    """Chat history response with pagination."""
     chat_id: str
     session_id: str
     subject_id: str
     chapter_number: int
     chapter_title: str
     messages: List[ChatHistoryItem]
-    total: int
+    total: int = Field(description="Total number of messages in chat")
+    limit: int = Field(default=50, description="Messages returned per request")
+    skip: int = Field(default=0, description="Number of messages skipped")
+    has_more: bool = Field(description="Whether more messages exist for pagination")
 
 
 class ChatResponse(BaseModel):
