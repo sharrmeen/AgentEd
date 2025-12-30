@@ -83,12 +83,17 @@ def rag_retriever(user_id: str, question: str, subject: str = None, chapter: str
         )
         
         if not results:
+            print(f"❌ RAG: No results found for: {question}")
             return "No relevant content found in your notes."
+        
+        print(f"✅ RAG: Found {len(results)} sources for: {question}")
         
         formatted = []
         for i, doc in enumerate(results, 1):
             content = doc["content"]
             metadata = doc.get("metadata", {})
+            
+            print(f"   Source {i}: {metadata.get('source_file', 'Unknown')}")
             
             formatted.append(
                 f"Source {i} (Confidence: {doc.get('confidence', 0):.2f}):\n"
@@ -99,6 +104,7 @@ def rag_retriever(user_id: str, question: str, subject: str = None, chapter: str
         return "\n\n".join(formatted)
     
     except Exception as e:
+        print(f"❌ RAG Error: {str(e)}")
         return f"RAG retrieval error: {str(e)}"
 
 

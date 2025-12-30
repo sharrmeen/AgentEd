@@ -72,7 +72,13 @@ def route_supervisor(state: AgentEdState) -> Literal["study_plan", "content", "q
         print("🎯 Router: Query intent=CONTENT → resource agent")
         return "content"
     
-    print("🎯 Router: No clear intent → END")
+    # DEFAULT: If subject_id exists, assume student is asking about topic
+    # (pure topic names like "Prime Numbers" should trigger content agent)
+    if state.get("subject_id"):
+        print("🎯 Router: Has subject_id + ambiguous query → resource agent (default)")
+        return "content"
+    
+    print("🎯 Router: No clear intent and no subject context → END")
     return "__end__"
 
 

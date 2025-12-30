@@ -55,6 +55,16 @@ async def upload_notes(
         )
     
     try:
+        # Get file type from content type
+        file_type = "image"
+        if file.content_type:
+            if "pdf" in file.content_type:
+                file_type = "pdf"
+            elif "word" in file.content_type or "docx" in file.content_type:
+                file_type = "docx"
+            elif "image" in file.content_type:
+                file_type = "image"
+        
         # Upload file
         upload_result = await UploadService.upload_notes(
             user_id=user_id,
@@ -69,7 +79,9 @@ async def upload_notes(
             subject_id=subject_obj_id,
             subject=subject_id,
             chapter=chapter,
-            file_path=upload_result["file_path"]
+            source_file=file.filename,
+            file_path=upload_result["file_path"],
+            file_type=file_type
         )
         
         return NotesUploadResponse(
