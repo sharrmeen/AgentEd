@@ -10,9 +10,13 @@ from typing import Optional
 from datetime import datetime
 
 from app.services.feedback_service import FeedbackService
+from app.services.quiz_service import QuizService
 from app.schemas.feedback import (
     FeedbackResponse,
-    FeedbackListResponse
+    FeedbackListResponse,
+    ConceptAnalysisResponse,
+    RevisionItemResponse,
+    LearningInsightResponse
 )
 from app.api.deps import get_user_id
 
@@ -59,6 +63,57 @@ async def get_feedback(
                 detail="Feedback not found"
             )
         
+        # Convert nested objects to response schemas
+        strength_details = []
+        if hasattr(feedback, 'strength_details') and feedback.strength_details:
+            for detail in feedback.strength_details:
+                strength_details.append(ConceptAnalysisResponse(
+                    concept=detail.concept if hasattr(detail, 'concept') else "",
+                    questions_on_concept=detail.questions_on_concept if hasattr(detail, 'questions_on_concept') else 0,
+                    correct_answers=detail.correct_answers if hasattr(detail, 'correct_answers') else 0,
+                    accuracy_percentage=detail.accuracy_percentage if hasattr(detail, 'accuracy_percentage') else 0.0,
+                    mastery_level=detail.mastery_level if hasattr(detail, 'mastery_level') else "needs_attention",
+                    needs_revision=detail.needs_revision if hasattr(detail, 'needs_revision') else True,
+                    suggestion=detail.suggestion if hasattr(detail, 'suggestion') else ""
+                ))
+        
+        weakness_details = []
+        if hasattr(feedback, 'weakness_details') and feedback.weakness_details:
+            for detail in feedback.weakness_details:
+                weakness_details.append(ConceptAnalysisResponse(
+                    concept=detail.concept if hasattr(detail, 'concept') else "",
+                    questions_on_concept=detail.questions_on_concept if hasattr(detail, 'questions_on_concept') else 0,
+                    correct_answers=detail.correct_answers if hasattr(detail, 'correct_answers') else 0,
+                    accuracy_percentage=detail.accuracy_percentage if hasattr(detail, 'accuracy_percentage') else 0.0,
+                    mastery_level=detail.mastery_level if hasattr(detail, 'mastery_level') else "needs_attention",
+                    needs_revision=detail.needs_revision if hasattr(detail, 'needs_revision') else True,
+                    suggestion=detail.suggestion if hasattr(detail, 'suggestion') else ""
+                ))
+        
+        revision_items = []
+        if hasattr(feedback, 'revision_items') and feedback.revision_items:
+            for item in feedback.revision_items:
+                revision_items.append(RevisionItemResponse(
+                    concept=item.concept if hasattr(item, 'concept') else "",
+                    reason=item.reason if hasattr(item, 'reason') else "",
+                    priority=item.priority if hasattr(item, 'priority') else "medium",
+                    source_file=item.source_file if hasattr(item, 'source_file') else None,
+                    chapter_number=item.chapter_number if hasattr(item, 'chapter_number') else None,
+                    section=item.section if hasattr(item, 'section') else None,
+                    estimated_time=item.estimated_time if hasattr(item, 'estimated_time') else None,
+                    recommended_approach=item.recommended_approach if hasattr(item, 'recommended_approach') else None
+                ))
+        
+        insights = []
+        if hasattr(feedback, 'insights') and feedback.insights:
+            for insight in feedback.insights:
+                insights.append(LearningInsightResponse(
+                    insight_type=insight.insight_type if hasattr(insight, 'insight_type') else "recommendation",
+                    title=insight.title if hasattr(insight, 'title') else "",
+                    description=insight.description if hasattr(insight, 'description') else "",
+                    action_items=insight.action_items if hasattr(insight, 'action_items') else []
+                ))
+        
         return FeedbackResponse(
             id=str(feedback.id) if hasattr(feedback, 'id') else str(feedback.get("_id")),
             quiz_result_id=str(feedback.quiz_result_id) if hasattr(feedback, 'quiz_result_id') else "",
@@ -72,15 +127,15 @@ async def get_feedback(
             performance_level=feedback.performance_level if hasattr(feedback, 'performance_level') else "needs_improvement",
             performance_summary=feedback.performance_summary if hasattr(feedback, 'performance_summary') else "",
             strengths=feedback.strengths if hasattr(feedback, 'strengths') else [],
-            strength_details=feedback.strength_details if hasattr(feedback, 'strength_details') else [],
+            strength_details=strength_details,
             weak_areas=feedback.weak_areas if hasattr(feedback, 'weak_areas') else [],
-            weakness_details=feedback.weakness_details if hasattr(feedback, 'weakness_details') else [],
+            weakness_details=weakness_details,
             revision_tips=feedback.revision_tips if hasattr(feedback, 'revision_tips') else [],
-            revision_items=feedback.revision_items if hasattr(feedback, 'revision_items') else [],
+            revision_items=revision_items,
             estimated_revision_time=feedback.estimated_revision_time if hasattr(feedback, 'estimated_revision_time') else 0.0,
             recommended_resources=feedback.recommended_resources if hasattr(feedback, 'recommended_resources') else [],
             recommended_chapters=feedback.recommended_chapters if hasattr(feedback, 'recommended_chapters') else [],
-            insights=feedback.insights if hasattr(feedback, 'insights') else [],
+            insights=insights,
             motivational_message=feedback.motivational_message if hasattr(feedback, 'motivational_message') else "",
             encouragement=feedback.encouragement if hasattr(feedback, 'encouragement') else "",
             next_steps=feedback.next_steps if hasattr(feedback, 'next_steps') else [],
@@ -127,18 +182,29 @@ async def list_feedback(
             subject_id=subject_obj_id
         )
         
-        feedback_items = [
-            {
+        feedback_items = []
+        for f in feedback_reports:
+            # Fetch quiz to get title
+            quiz_title = "Quiz"
+            try:
+                quiz = await QuizService.get_quiz_by_id(
+                    user_id=user_id,
+                    quiz_id=f.quiz_id
+                )
+                if quiz:
+                    quiz_title = quiz.title if hasattr(quiz, 'title') else "Quiz"
+            except:
+                pass  # Use default if quiz not found
+            
+            feedback_items.append({
                 "id": str(f.id) if hasattr(f, 'id') else str(f.get("_id", "")),
                 "quiz_result_id": str(f.quiz_result_id) if hasattr(f, 'quiz_result_id') else "",
-                "quiz_title": f.quiz_title if hasattr(f, 'quiz_title') else "Quiz",
+                "quiz_title": quiz_title,
                 "score": f.score if hasattr(f, 'score') else 0.0,
                 "percentage": f.percentage if hasattr(f, 'percentage') else 0.0,
                 "performance_level": f.performance_level if hasattr(f, 'performance_level') else "needs_improvement",
                 "created_at": f.created_at if hasattr(f, 'created_at') else datetime.utcnow()
-            }
-            for f in feedback_reports
-        ]
+            })
         
         return FeedbackListResponse(
             feedback_reports=feedback_items,

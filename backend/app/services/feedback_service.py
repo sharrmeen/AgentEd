@@ -262,7 +262,7 @@ class FeedbackService:
             # Count questions on this concept
             questions_on_concept = sum(
                 1 for qr in quiz_result.question_results
-                if concept in qr.get("concepts_tested", [])
+                if concept in (qr.concepts_tested if hasattr(qr, 'concepts_tested') else qr.get("concepts_tested", []))
             )
             
             correct_answers = int(questions_on_concept * accuracy / 100)
