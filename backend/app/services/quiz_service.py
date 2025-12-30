@@ -559,11 +559,19 @@ class QuizService:
         
         Returns:
         {
+            "subject_id": str,
             "total_quizzes": int,
             "total_attempts": int,
             "average_score": float,
             "highest_score": float,
-            "pass_rate": float
+            "lowest_score": float,
+            "pass_rate": float,
+            "total_questions_answered": int,
+            "correct_answers": int,
+            "accuracy": float,
+            "strengths": list,
+            "weak_areas": list,
+            "recent_trend": str
         }
         """
         results_col = db.quiz_results()
@@ -577,21 +585,63 @@ class QuizService:
         
         if not results:
             return {
+                "subject_id": str(subject_id),
                 "total_quizzes": 0,
                 "total_attempts": 0,
                 "average_score": 0.0,
                 "highest_score": 0.0,
-                "pass_rate": 0.0
+                "lowest_score": 0.0,
+                "pass_rate": 0.0,
+                "total_questions_answered": 0,
+                "correct_answers": 0,
+                "accuracy": 0.0,
+                "strengths": [],
+                "weak_areas": [],
+                "recent_trend": "stable"
             }
         
         total_attempts = len(results)
         total_score = sum(r["percentage"] for r in results)
         passed_count = sum(1 for r in results if r["passed"])
+        scores = [r["percentage"] for r in results]
+        
+        # Calculate total questions and correct answers
+        total_questions = 0
+        total_correct = 0
+        for result in results:
+            if "total_questions" in result:
+                total_questions += result["total_questions"]
+            if "correct_count" in result:
+                total_correct += result["correct_count"]
+        
+        accuracy = 0.0
+        if total_questions > 0:
+            accuracy = round((total_correct / total_questions) * 100, 2)
+        
+        # Determine trend (comparing last 3 quizzes if available)
+        recent_trend = "stable"
+        if len(results) >= 3:
+            last_three_scores = scores[-3:]
+            avg_last_three = sum(last_three_scores) / 3
+            earlier_avg = sum(scores[:-3]) / (len(scores) - 3)
+            
+            if avg_last_three > earlier_avg + 5:
+                recent_trend = "improving"
+            elif avg_last_three < earlier_avg - 5:
+                recent_trend = "declining"
         
         return {
+            "subject_id": str(subject_id),
             "total_quizzes": len(set(r["quiz_id"] for r in results)),
             "total_attempts": total_attempts,
             "average_score": round(total_score / total_attempts, 2),
-            "highest_score": round(max(r["percentage"] for r in results), 2),
-            "pass_rate": round((passed_count / total_attempts * 100), 2)
+            "highest_score": round(max(scores), 2),
+            "lowest_score": round(min(scores), 2),
+            "pass_rate": round((passed_count / total_attempts * 100), 2),
+            "total_questions_answered": total_questions,
+            "correct_answers": total_correct,
+            "accuracy": accuracy,
+            "strengths": [],  # Can be enhanced with topic analysis
+            "weak_areas": [],  # Can be enhanced with topic analysis
+            "recent_trend": recent_trend
         }

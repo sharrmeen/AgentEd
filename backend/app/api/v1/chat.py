@@ -129,7 +129,8 @@ async def send_message(
                 user_query=request.question,
                 subject_id=str(chat.subject_id),
                 chapter_number=chat.chapter_number,
-                session_id=str(chat.session_id)
+                session_id=str(chat.session_id),
+                intent=request.intent_tag or "answer"
             )
             
             # Debug: Log workflow result structure

@@ -255,6 +255,7 @@ async def run_workflow(
     subject_id: str = None,
     chapter_number: int = None,
     session_id: str = None,
+    intent: str = "answer",
     constraints: dict = None,
     quiz_results: dict = None,
     **kwargs
@@ -262,12 +263,24 @@ async def run_workflow(
     """
     Execute the complete multi-agent workflow.
     
-    INPUT/OUTPUT: Unchanged - fully compatible
+    Args:
+        user_id: User identifier
+        user_query: User's question/query
+        subject_id: Subject context
+        chapter_number: Chapter context
+        session_id: Session identifier
+        intent: Intent type - 'answer' (default) | 'explain' | 'summarize'
+        constraints: Planning constraints
+        quiz_results: Quiz results data
+        
+    Returns:
+        Workflow result with answer, metadata, and execution info
     """
     
     initial_state = AgentEdState(
         user_id=user_id,
         user_query=user_query,
+        intent=intent,
         subject_id=subject_id,
         subject_name=None,
         chapter_number=chapter_number,

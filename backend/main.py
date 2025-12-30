@@ -1,16 +1,22 @@
 """
 AgentEd Backend - Main FastAPI Application.
 
-Dual-layer architecture:
-- Service Layer: Pure business logic (stateless, testable)
-- Agent Layer: LangGraph orchestration for intelligent workflows
+Architecture:
+- Agent-Based: LangGraph orchestration for intelligent workflows
+- Intent-Driven: Single resource agent with dynamic prompts
+- Multi-Modal: Supports explain, summarize, and answer intents
 
 API Routes:
-- /api/v1/* → Direct service calls (legacy)
-- /api/v2/* → Agent workflows (intelligent)
+- /api/v1/* → User-facing endpoints (chat, notes, quiz, planner, feedback)
 
-Database:
-- MongoDB: Structured data, cache
+Agents:
+- Resource Agent: Knowledge retrieval with intent-based prompts
+- Study Plan Agent: Curriculum design
+- Quiz Agent: Assessment generation
+- Feedback Agent: Performance analysis
+
+Storage:
+- MongoDB: Structured data, chat memory, cache
 - ChromaDB: Vector embeddings for RAG
 """
 
@@ -152,4 +158,4 @@ async def global_exception_handler(request, exc):
 async def startup_message():
     logger.info(f"🎓 AgentEd Backend v{settings.APP_VERSION} is running")
     logger.info(f"📖 Docs available at http://localhost:8000/api/docs")
-    logger.info(f"🔗 API endpoints: /api/v1 (services) and /api/v2 (agents)")
+    logger.info(f"🔗 API endpoints: /api/v1 (user-facing chat, notes, quiz, etc.)")

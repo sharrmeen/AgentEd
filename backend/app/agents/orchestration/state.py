@@ -20,6 +20,7 @@ class AgentEdState(TypedDict, total=False):
     # ============================
     user_id: str
     user_query: str
+    intent: str  # 'answer' | 'explain' | 'summarize'
     
     # ============================
     # SUBJECT CONTEXT

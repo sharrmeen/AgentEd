@@ -17,9 +17,9 @@ class ChatMessageRequest(BaseModel):
     """Send chat message request."""
     question: str = Field(..., min_length=1, max_length=2000, description="User's question")
     intent_tag: Optional[str] = Field(
-        default="Answer",
-        pattern="^(Explain|Answer|Reexplain|Summarize|Example)$",
-        description="Type of response expected"
+        default="answer",
+        pattern="^(explain|summarize|answer)$",
+        description="Intent: 'answer' (default) | 'explain' | 'summarize'"
     )
 
 
