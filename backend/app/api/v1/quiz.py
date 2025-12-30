@@ -1,3 +1,4 @@
+
 # backend/app/api/v1/quiz.py
 
 """
@@ -14,8 +15,10 @@ from app.schemas.quiz import (
     QuizGenerateRequest,
     QuizResponse,
     QuizListResponse,
+    QuizListItem,
     QuizSubmitRequest,
     QuizResultResponse,
+    QuizResultListResponse,
     QuizStatisticsResponse
 )
 from app.api.deps import get_user_id
@@ -222,7 +225,7 @@ async def get_quiz(
         )
 
 
-@router.get("", response_model=QuizListResponse)
+@router.get("")
 async def list_quizzes(
     subject_id: Optional[str] = None,
     chapter_number: Optional[int] = None,
@@ -256,25 +259,54 @@ async def list_quizzes(
             quiz_type=quiz_type
         )
         
-        quiz_responses = [
-            {
-                "id": str(q.id),
-                "title": q.title,
-                "chapter": q.chapter,
-                "chapter_number": q.chapter_number,
-                "quiz_type": q.quiz_type,
-                "total_marks": q.total_marks,
-                "questions_count": len(q.questions),
-                "time_limit": q.time_limit,
-                "created_at": q.created_at
-            }
-            for q in quizzes
-        ]
+        from datetime import datetime
         
-        return QuizListResponse(
-            quizzes=quiz_responses,
-            total=len(quiz_responses)
-        )
+        # Convert Quiz objects to dicts
+        quiz_responses = []
+        for q in quizzes:
+            try:
+                if isinstance(q, dict):
+                    # Already a dict from database
+                    quiz_dict = {
+                        "id": str(q.get("_id", "")),
+                        "title": q.get("title", ""),
+                        "chapter": q.get("chapter", ""),
+                        "chapter_number": q.get("chapter_number"),
+                        "quiz_type": q.get("quiz_type", ""),
+                        "total_marks": q.get("total_marks", 0),
+                        "questions_count": len(q.get("questions", [])),
+                        "time_limit": q.get("time_limit"),
+                        "created_at": q.get("created_at", datetime.utcnow())
+                    }
+                else:
+                    # Quiz model object
+                    quiz_dict = {
+                        "id": str(q._id if hasattr(q, '_id') else q.id),
+                        "title": q.title or "",
+                        "chapter": q.chapter or "",
+                        "chapter_number": getattr(q, 'chapter_number', None),
+                        "quiz_type": q.quiz_type or "",
+                        "total_marks": q.total_marks or 0,
+                        "questions_count": len(q.questions or []),
+                        "time_limit": getattr(q, 'time_limit', None),
+                        "created_at": q.created_at or datetime.utcnow()
+                    }
+                print(f"✓ Converted quiz: {quiz_dict.get('id')} - {quiz_dict.get('title')}")
+                quiz_responses.append(quiz_dict)
+            except Exception as e:
+                print(f"✗ Error converting quiz: {str(e)}")
+                import traceback
+                traceback.print_exc()
+                continue
+        
+        print(f"Total quizzes: {len(quiz_responses)}")
+        if quiz_responses:
+            print(f"First quiz keys: {list(quiz_responses[0].keys())}")
+        
+        return {
+            "quizzes": quiz_responses,
+            "total": len(quiz_responses)
+        }
     
     except Exception as e:
         raise HTTPException(
@@ -369,7 +401,7 @@ async def submit_quiz(
         )
 
 
-@router.get("/{subject_id}/results", response_model=QuizListResponse)
+@router.get("/{subject_id}/results", response_model=QuizResultListResponse)
 async def get_quiz_results(
     subject_id: str,
     user_id: ObjectId = Depends(get_user_id)
@@ -397,22 +429,28 @@ async def get_quiz_results(
             subject_id=subject_obj_id
         )
         
-        result_responses = [
-            {
+        result_responses = []
+        for r in results:
+            # Fetch quiz to get title
+            quiz = await QuizService.get_quiz_by_id(
+                user_id=user_id,
+                quiz_id=ObjectId(r.quiz_id)
+            )
+            quiz_title = quiz.title if quiz else "Quiz"
+            
+            result_responses.append({
                 "id": str(r.id),
                 "quiz_id": str(r.quiz_id),
-                "quiz_title": "Quiz",  # Would fetch from quiz if needed
+                "quiz_title": quiz_title,
                 "score": r.score,
                 "max_score": r.max_score,
                 "percentage": r.percentage,
-                "passed": r.percentage >= 60.0,
-                "completed_at": r.completed_at if hasattr(r, 'completed_at') else None
-            }
-            for r in results
-        ]
+                "passed": r.passed,
+                "completed_at": r.completed_at
+            })
         
-        return QuizListResponse(
-            quizzes=result_responses,
+        return QuizResultListResponse(
+            results=result_responses,
             total=len(result_responses)
         )
     
