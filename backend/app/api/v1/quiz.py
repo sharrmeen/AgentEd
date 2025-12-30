@@ -334,10 +334,10 @@ async def submit_quiz(
                 "user_answer": qr.user_answer,
                 "correct_answer": qr.correct_answer,
                 "is_correct": qr.is_correct,
-                "marks_obtained": qr.marks_obtained,
-                "marks_possible": qr.marks_possible,
+                "marks_obtained": qr.marks_awarded,
+                "marks_possible": qr.max_marks,
                 "explanation": qr.explanation if hasattr(qr, 'explanation') else "",
-                "concepts": qr.concepts if hasattr(qr, 'concepts') else []
+                "concepts": qr.concepts_tested if hasattr(qr, 'concepts_tested') else []
             }
             for qr in result.question_results
         ]
@@ -349,8 +349,8 @@ async def submit_quiz(
             score=result.score,
             max_score=result.max_score,
             percentage=result.percentage,
-            passed=result.percentage >= result.pass_percentage,
-            time_taken_seconds=result.time_taken_seconds if hasattr(result, 'time_taken_seconds') else 0,
+            passed=result.passed,
+            time_taken_seconds=result.time_taken_seconds if hasattr(result, 'time_taken_seconds') else int(result.time_taken * 60) if hasattr(result, 'time_taken') else 0,
             question_results=question_results,
             strengths=result.strengths if hasattr(result, 'strengths') else [],
             weak_areas=result.weak_areas if hasattr(result, 'weak_areas') else [],

@@ -332,7 +332,13 @@ class QuizService:
         )
         
         # Calculate time taken
-        completed_at = datetime.utcnow()
+        from datetime import timezone
+        completed_at = datetime.now(timezone.utc)
+        
+        # Ensure started_at is timezone-aware for comparison
+        if started_at.tzinfo is None:
+            started_at = started_at.replace(tzinfo=timezone.utc)
+        
         time_taken = (completed_at - started_at).total_seconds() / 60  # Minutes
         
         # Determine pass/fail
@@ -411,16 +417,24 @@ class QuizService:
         concept_total = {}    # concept → total_count
         
         for question in quiz.questions:
-            q_num = str(question["question_number"])
+            # Handle both dict and QuizQuestion object
+            q_number = question.get("question_number") if isinstance(question, dict) else question.question_number
+            q_text = question.get("text") if isinstance(question, dict) else question.text
+            q_correct = question.get("correct_answer") if isinstance(question, dict) else question.correct_answer
+            q_marks = question.get("marks") if isinstance(question, dict) else question.marks
+            q_id = question.get("question_id") if isinstance(question, dict) else question.question_id
+            q_concepts = question.get("concepts", []) if isinstance(question, dict) else (question.concepts or [])
+            
+            q_num = str(q_number)
             user_answer = user_answers.get(q_num, "").strip()
-            correct_answer = question["correct_answer"].strip()
+            correct_answer = q_correct.strip() if q_correct else ""
             
             # Check correctness
             is_correct = user_answer.lower() == correct_answer.lower()
             
-            marks_awarded = question["marks"] if is_correct else 0.0
+            marks_awarded = q_marks if is_correct else 0.0
             score += marks_awarded
-            max_score += question["marks"]
+            max_score += q_marks
             
             if not user_answer:
                 skipped_count += 1
@@ -430,8 +444,7 @@ class QuizService:
                 incorrect_count += 1
             
             # Track concept performance
-            concepts = question.get("concepts", [])
-            for concept in concepts:
+            for concept in q_concepts:
                 if concept not in concept_total:
                     concept_total[concept] = 0
                     concept_correct[concept] = 0
@@ -442,15 +455,15 @@ class QuizService:
             
             # Store question result
             question_results.append({
-                "question_id": question["question_id"],
-                "question_number": question["question_number"],
-                "question_text": question["text"],
+                "question_id": str(q_id),
+                "question_number": q_number,
+                "question_text": q_text,
                 "user_answer": user_answer,
                 "correct_answer": correct_answer,
                 "is_correct": is_correct,
                 "marks_awarded": marks_awarded,
-                "max_marks": question["marks"],
-                "concepts_tested": concepts
+                "max_marks": q_marks,
+                "concepts_tested": q_concepts
             })
         
         # Calculate concept scores
