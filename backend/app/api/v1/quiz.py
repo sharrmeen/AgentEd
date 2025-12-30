@@ -10,6 +10,7 @@ from bson import ObjectId
 from typing import Optional
 
 from app.services.quiz_service import QuizService
+from app.services.feedback_service import FeedbackService
 from app.agents.orchestration.workflow import run_workflow
 from app.schemas.quiz import (
     QuizGenerateRequest,
@@ -356,6 +357,17 @@ async def submit_quiz(
             submission=submission,
             started_at=request.started_at
         )
+        
+        # Generate feedback for the quiz result
+        try:
+            await FeedbackService.generate_feedback(
+                user_id=user_id,
+                result_id=ObjectId(str(result.id))
+            )
+            print(f"✅ Feedback generated for result: {result.id}")
+        except Exception as feedback_err:
+            print(f"⚠️ Could not generate feedback: {str(feedback_err)}")
+            # Don't fail the endpoint if feedback generation fails
         
         # Convert question results
         question_results = [
