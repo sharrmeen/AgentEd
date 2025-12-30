@@ -70,8 +70,21 @@ async def generate_quiz(
         
         # Extract quiz from workflow result
         quiz_data = workflow_result.get("quiz")
+        quiz_metadata = workflow_result.get("quiz_metadata")
+        
+        # Debug: Check workflow result status
+        if workflow_result.get("errors"):
+            print(f"❌ Workflow errors: {workflow_result.get('errors')}")
+        print(f"📊 Workflow result keys: {list(workflow_result.keys())}")
+        print(f"📊 Agent trace: {workflow_result.get('agent_trace')}")
+        
         if not quiz_data:
-            raise ValueError("Failed to generate quiz from workflow")
+            # Provide more detailed error message
+            error_msgs = workflow_result.get("errors", [])
+            if error_msgs:
+                raise ValueError(f"Quiz generation failed: {'; '.join(error_msgs)}")
+            else:
+                raise ValueError("No quiz generated. Check workflow execution.")
         
         # Store quiz in database
         quiz = await QuizService.create_quiz(
@@ -81,13 +94,25 @@ async def generate_quiz(
             chapter_number=request.chapter_number,
             chapter_title=workflow_result.get("chapter_title", f"Chapter {request.chapter_number}"),
             quiz_data=quiz_data,
+            quiz_metadata=quiz_metadata,
             quiz_type=request.quiz_type
         )
         
+        # Extract metadata for response
+        if quiz_metadata:
+            quiz_title = quiz_metadata.get("title", f"{request.quiz_type.title()} Quiz")
+            quiz_topic = quiz_metadata.get("topic", f"Chapter {request.chapter_number}" if request.chapter_number else "General")
+            total_marks = quiz_metadata.get("total_marks", request.num_questions)
+        else:
+            quiz_title = f"{request.quiz_type.title()} Quiz"
+            quiz_topic = f"Chapter {request.chapter_number}" if request.chapter_number else "General"
+            total_marks = request.num_questions
+        
         # Convert questions to response format
+        questions_list = quiz_data if isinstance(quiz_data, list) else quiz_data.get("questions", [])
         question_responses = [
             {
-                "question_id": str(q.get("question_id")),
+                "question_id": str(q.get("question_id", i)),
                 "question_number": q.get("question_number", i+1),
                 "text": q.get("text", q.get("question_text", "")),
                 "question_type": q.get("question_type", "mcq"),
@@ -95,20 +120,20 @@ async def generate_quiz(
                 "difficulty": q.get("difficulty", "medium"),
                 "marks": q.get("marks", 1)
             }
-            for i, q in enumerate(quiz_data.get("questions", []))
+            for i, q in enumerate(questions_list)
         ]
         
         return QuizResponse(
             id=str(quiz.id) if hasattr(quiz, 'id') else str(quiz.get("_id")),
             subject_id=request.subject_id,
-            subject=workflow_result.get("subject_name", "Unknown"),
+            subject=quiz.subject if hasattr(quiz, 'subject') else quiz.get("subject", "Unknown"),
             chapter=f"Chapter {request.chapter_number}" if request.chapter_number else "General",
             chapter_number=request.chapter_number,
-            title=quiz_data.get("title", f"{request.quiz_type.title()} Quiz"),
-            description=f"{request.num_questions} questions • {request.difficulty or 'mixed'} difficulty",
+            title=quiz_title,
+            description=f"{len(questions_list)} questions • {request.difficulty or 'mixed'} difficulty",
             quiz_type=request.quiz_type,
             questions=question_responses,
-            total_marks=quiz_data.get("total_marks", request.num_questions),
+            total_marks=total_marks,
             time_limit=request.num_questions * 3,  # 3 minutes per question
             pass_percentage=60.0,
             created_at=quiz.get("created_at") if isinstance(quiz, dict) else quiz.created_at

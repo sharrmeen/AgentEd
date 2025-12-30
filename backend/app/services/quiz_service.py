@@ -43,6 +43,92 @@ class QuizService:
     # ============================
     
     @staticmethod
+    async def create_quiz(
+        *,
+        user_id: ObjectId,
+        subject_id: ObjectId,
+        subject_name: str,
+        chapter_number: Optional[int],
+        chapter_title: str,
+        quiz_data: Dict,
+        quiz_metadata: Optional[Dict] = None,
+        quiz_type: str = "practice",
+        session_id: Optional[ObjectId] = None,
+        time_limit: Optional[int] = None,
+        pass_percentage: float = 60.0
+    ) -> Quiz:
+        """
+        Create and store a quiz (API wrapper).
+        
+        Called by API endpoint after quiz generation.
+        Handles both old format (quiz_data as list) and new format (quiz_data as dict).
+        
+        Args:
+            user_id: User ID
+            subject_id: Subject ID
+            subject_name: Subject name
+            chapter_number: Chapter number
+            chapter_title: Chapter title
+            quiz_data: Generated quiz data from agent
+                Can be:
+                - List of questions (from agent "quiz" field)
+                - Dict with "title", "questions", "total_marks", "topic"
+            quiz_metadata: Optional metadata dict from agent
+                {"title": "...", "topic": "...", "total_marks": int, "total_questions": int}
+            quiz_type: "practice" | "revision" | "mock_exam"
+            session_id: Optional study session ID
+            time_limit: Optional time limit in minutes
+            pass_percentage: Pass threshold percentage
+        """
+        # Handle case where quiz_data is a list of questions (from agent output)
+        if isinstance(quiz_data, list):
+            questions = quiz_data
+            # Use metadata if provided, otherwise construct defaults
+            if quiz_metadata:
+                title = quiz_metadata.get("title", f"{quiz_type.title()} Quiz")
+                topic = quiz_metadata.get("topic", chapter_title)
+                total_marks = quiz_metadata.get("total_marks", len(questions))
+            else:
+                title = f"{quiz_type.title()} Quiz"
+                topic = chapter_title
+                total_marks = len(questions)
+        else:
+            # quiz_data is already a dict
+            questions = quiz_data.get("questions", [])
+            title = quiz_data.get("title", f"{quiz_type.title()} Quiz")
+            topic = quiz_data.get("topic", chapter_title)
+            total_marks = quiz_data.get("total_marks", len(questions))
+        
+        # Ensure subject_name is not None or empty
+        if not subject_name or subject_name == "Unknown":
+            # Try to fetch from database
+            from app.services.subject_service import SubjectService
+            try:
+                subject = await SubjectService.get_subject_by_id(
+                    user_id=user_id,
+                    subject_id=subject_id
+                )
+                subject_name = subject.subject_name if subject else "Unknown Subject"
+            except:
+                subject_name = "Unknown Subject"
+        
+        return await QuizService.store_quiz(
+            user_id=user_id,
+            subject_id=subject_id,
+            subject=subject_name,
+            chapter=chapter_title,
+            chapter_number=chapter_number,
+            title=title,
+            description=f"Quiz: {topic}",
+            questions=questions,
+            quiz_type=quiz_type,
+            session_id=session_id,
+            time_limit=time_limit,
+            pass_percentage=pass_percentage,
+            source_content=None
+        )
+    
+    @staticmethod
     async def store_quiz(
         *,
         user_id: ObjectId,

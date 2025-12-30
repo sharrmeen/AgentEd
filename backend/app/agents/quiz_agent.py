@@ -16,7 +16,6 @@ from typing import Dict, List
 from pydantic import BaseModel, Field
 
 from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain.agents import create_agent
 from langchain.tools import tool
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import PydanticOutputParser
@@ -61,6 +60,69 @@ class QuizOutput(BaseModel):
 
 # ============================
 # TOOLS (Quiz Agent collaborates with these)
+# ============================
+
+
+# ============================
+# HELPER FUNCTIONS (used directly by agent)
+# ============================
+
+async def _get_quiz_content(topic: str, user_id: str, subject: str = None, chapter: str = None) -> str:
+    """Helper to retrieve quiz content."""
+    try:
+        retrieval_service = RetrievalService()
+        
+        results = retrieval_service.query(
+            question=f"Content about {topic}",
+            user_id=user_id,
+            subject=subject,
+            chapter=chapter,
+            k=10
+        )
+        
+        if not results:
+            return "No content found. Upload study materials first."
+        
+        # Format content for quiz generation
+        formatted = []
+        for i, doc in enumerate(results, 1):
+            formatted.append(f"Source {i}:\n{doc['content']}")
+        
+        return "\n\n".join(formatted)
+    
+    except Exception as e:
+        return f"Error retrieving content: {str(e)}"
+
+
+async def _get_objectives(subject_id: str, user_id: str, chapter_number: int) -> str:
+    """Helper to get chapter learning objectives."""
+    try:
+        subject = await SubjectService.get_subject_by_id(
+            user_id=ObjectId(user_id),
+            subject_id=ObjectId(subject_id)
+        )
+        
+        if not subject or not subject.plan:
+            return "No learning objectives found."
+        
+        chapters = subject.plan.get("chapters", [])
+        chapter = next(
+            (ch for ch in chapters if ch.get("chapter_number") == chapter_number),
+            None
+        )
+        
+        if chapter:
+            objectives = chapter.get("objectives", [])
+            return "Learning Objectives:\n" + "\n".join(f"- {obj}" for obj in objectives)
+        
+        return "No objectives for this chapter."
+    
+    except Exception as e:
+        return f"Error getting objectives: {str(e)}"
+
+
+# ============================
+# TOOLS (for potential agent use in future)
 # ============================
 
 @tool
@@ -156,72 +218,59 @@ async def quiz_agent_node(state: AgentEdState) -> Dict:
                 subject_id=ObjectId(subject_id)
             )
         
-        # Create agent with system prompt
-        system_prompt = f"""You are an expert quiz creator (Formative Assessor).
+        # Directly retrieve content using helper functions
+        print(f"📚 Retrieving quiz content for: {topic}")
+        
+        # Get quiz content
+        quiz_content = await _get_quiz_content(
+            topic=topic,
+            user_id=user_id,
+            subject=subject.subject_name if subject else None,
+            chapter=f"Chapter {chapter_number}" if chapter_number else None
+        )
+        
+        # Get learning objectives
+        learning_objectives = ""
+        if subject_id and chapter_number:
+            learning_objectives = await _get_objectives(
+                subject_id=subject_id,
+                user_id=user_id,
+                chapter_number=chapter_number
+            )
+        
+        print(f"✅ Retrieved content. Length: {len(quiz_content)} chars")
+        
+        # Generate quiz using Pydantic structured output
+        parser = PydanticOutputParser(pydantic_object=QuizOutput)
+        num_questions = state.get('constraints', {}).get('num_questions', 5)
+        
+        # Build the full prompt as a string (not ChatPromptTemplate to avoid variable interpolation issues)
+        full_prompt = f"""You are an expert quiz creator (Formative Assessor).
 
 Topic: {topic}
 Subject: {subject.subject_name if subject else "Unknown"}
 Chapter: {chapter_number if chapter_number else "General"}
 
-Your workflow:
-1. Use retrieve_quiz_content to get curriculum materials
-2. Use get_learning_objectives to understand what students should know
-3. Generate 5-8 varied questions grounded in the retrieved content
-4. Ensure questions test understanding, not memorization
-5. Provide detailed explanations linking to source materials
+IMPORTANT: Generate a structured quiz response in valid JSON format only. Do not ask for information or explanations.
 
-Create a comprehensive quiz based on the retrieved content and objectives."""
+Your task:
+1. Generate {num_questions} questions grounded in the provided curriculum materials
+2. Create varied question types: MCQ (60%), short answer (30%), true/false (10%)
+3. Ensure questions test understanding, not memorization
+4. Provide detailed explanations linking to source materials
 
-        agent = create_agent(
-            model=llm,
-            tools=tools,
-            system_prompt=system_prompt
-        )
-        
-        # Invoke agent to gather content and objectives
-        result = agent.invoke({
-            "messages": [{
-                "role": "user",
-                "content": f"Create a quiz for {topic}"
-            }]
-        })
-        
-        # Extract agent's response 
-        if isinstance(result, dict) and "messages" in result:
-            last_message = result["messages"][-1]
-            agent_context = last_message.content if hasattr(last_message, 'content') else str(last_message)
-        else:
-            agent_context = getattr(result, "content", "")
-        
-        # Now generate quiz using Pydantic structured output
-        parser = PydanticOutputParser(pydantic_object=QuizOutput)
-        
-        prompt = ChatPromptTemplate.from_messages([
-            ("system", """You are an expert quiz creator generating structured quiz output.
+{("Learning Objectives:" + learning_objectives) if learning_objectives else ""}
 
-{format_instructions}
+Course Material:
+{quiz_content}
 
-Create a quiz with:
-- 5-8 questions
-- Mix of MCQ (60%), short answer (30%), true/false (10%)
-- Clear explanations
-- Total marks: 20-40
+Generate a quiz titled "Quiz: {topic}" with {num_questions} questions.
 
-Generate as JSON."""),
-            ("human", f"""Based on this context:
+{parser.get_format_instructions()}"""
 
-{agent_context}
-
-Create a quiz titled "Quiz: {topic}" """)
-        ])
-        
-        chain = prompt | llm
-        
-        response = await chain.ainvoke({
-            "format_instructions": parser.get_format_instructions()
-        })
-        
-        quiz_output = parser.parse(response.content)
+        # Use simple prompt with LLM and parser
+        llm_output = await llm.ainvoke(full_prompt)
+        quiz_output = parser.parse(llm_output.content)
         quiz_dict = quiz_output.model_dump()
         
         return {
