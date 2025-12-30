@@ -52,10 +52,17 @@ def route_supervisor(state: AgentEdState) -> Literal["study_plan", "content", "q
         print("🎯 Router: Query intent=PLAN → study_plan agent")
         return "study_plan"
     
+    # QUIZ: Only route if explicitly asking to CREATE/GENERATE/TAKE a quiz
+    # NOT for general exam prep questions (those go to CONTENT)
     if any(keyword in query for keyword in [
-        "quiz", "test", "assessment", "exam", "practice", "questions"
-    ]):
-        print("🎯 Router: Query intent=QUIZ → quiz agent")
+        "generate quiz", "create quiz", "take quiz", "take test",
+        "quiz me", "test me", "practice questions"
+    ]) or (
+        # Alternative: has "quiz" or "test" AND (starts with "generate", "create", "take")
+        any(word in query for word in ["quiz", "test"]) and 
+        any(word in query for word in ["generate", "create", "take", "give me"])
+    ):
+        print("🎯 Router: Query intent=QUIZ → quiz agent (explicit quiz generation)")
         return "quiz"
     
     if any(keyword in query for keyword in [
@@ -67,7 +74,7 @@ def route_supervisor(state: AgentEdState) -> Literal["study_plan", "content", "q
     
     if any(keyword in query for keyword in [
         "what", "explain", "how", "why", "tell me", "teach me",
-        "describe", "define", "?"
+        "describe", "define", "?", "prepare", "study", "learn"
     ]):
         print("🎯 Router: Query intent=CONTENT → resource agent")
         return "content"
