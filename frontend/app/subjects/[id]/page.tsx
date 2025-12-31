@@ -311,7 +311,10 @@ export default function SubjectDetailPage() {
                         <Button
                           variant="outline"
                           className="w-full bg-transparent"
-                          onClick={() => router.push(`/subjects/${params.id}/plan`)}
+                          onClick={() => {
+                            const studyPlanTab = document.querySelector('[value="study-plan"]') as HTMLButtonElement
+                            studyPlanTab?.click()
+                          }}
                         >
                           View Study Plan
                         </Button>
@@ -410,7 +413,7 @@ export default function SubjectDetailPage() {
                               size="sm"
                               className="gap-2 bg-transparent"
                               onClick={() =>
-                                router.push(`/subjects/${params.id}/session?chapter=${chapter.chapter_number}`)
+                                router.push(`/subjects/${params.id}/study?chapter=${chapter.chapter_number}`)
                               }
                             >
                               <Play className="h-4 w-4" />

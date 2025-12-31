@@ -112,22 +112,41 @@ export function StudySessionContent() {
   const initializeSession = async () => {
     try {
       setIsLoading(true)
-
-      // 1. Fetch planner state to get chapter info
-      const plannerData = await api.get<PlannerStateResponse>(`/api/v1/planner/${params.id}`)
-      
       const chapterNum = Number(chapterNumber)
-      const chapterDeadline = plannerData.chapter_deadlines.find(
+
+      // 1. Fetch subject to get chapter details from the plan
+      const subjectData = await api.get<{
+        id: string
+        subject_name: string
+        plan: {
+          chapters: Array<{
+            chapter_number: number
+            title: string
+            objectives: string[]
+            estimated_hours: number
+          }>
+        } | null
+      }>(`/api/v1/subjects/${params.id}`)
+
+      // Find the chapter in the plan
+      const chapterData = subjectData.plan?.chapters?.find(
         (c) => c.chapter_number === chapterNum
       )
-      
-      if (chapterDeadline) {
-        const chapterProgress = plannerData.chapter_progress[String(chapterNum)]
+
+      if (chapterData) {
         setChapter({
           chapter_number: chapterNum,
-          title: chapterDeadline.title,
-          content: "", // Content could be fetched from a separate endpoint if needed
-          learning_objectives: chapterProgress?.completed_objectives || [],
+          title: chapterData.title,
+          content: "", // Content can be generated on demand
+          learning_objectives: chapterData.objectives || [],
+        })
+      } else {
+        // Fallback: set basic chapter info even if not found in plan
+        setChapter({
+          chapter_number: chapterNum,
+          title: `Chapter ${chapterNum}`,
+          content: "",
+          learning_objectives: [],
         })
       }
 
@@ -140,17 +159,32 @@ export function StudySessionContent() {
         
         setSessionId(sessionData.id)
         setChatId(sessionData.chat_id)
-      } catch {
+      } catch (error) {
         // Session might already exist, try to list active sessions
-        const sessionsResponse = await api.get<{ sessions: SessionResponse[]; total: number }>(
-          `/api/v1/sessions/?subject_id=${params.id}&status=active`
-        )
-        const existingSession = sessionsResponse.sessions.find(
-          (s) => s.chapter_number === chapterNum
-        )
-        if (existingSession) {
-          setSessionId(existingSession.id)
-          setChatId(existingSession.chat_id)
+        try {
+          const sessionsResponse = await api.get<{ sessions: SessionResponse[]; total: number }>(
+            `/api/v1/sessions/?subject_id=${params.id}&status=active`
+          )
+          const existingSession = sessionsResponse.sessions.find(
+            (s) => s.chapter_number === chapterNum
+          )
+          if (existingSession) {
+            setSessionId(existingSession.id)
+            setChatId(existingSession.chat_id)
+          } else {
+            // No active session, show error
+            toast({
+              title: "Session error",
+              description: "Could not create or find an active study session",
+              variant: "destructive",
+            })
+          }
+        } catch {
+          toast({
+            title: "Session error",
+            description: "Failed to check for existing sessions",
+            variant: "destructive",
+          })
         }
       }
     } catch (error) {
@@ -237,14 +271,21 @@ export function StudySessionContent() {
               <CardDescription>What you'll learn in this chapter</CardDescription>
             </CardHeader>
             <CardContent>
-              <ul className="space-y-2">
-                {chapter.learning_objectives.map((objective, idx) => (
-                  <li key={idx} className="flex items-start gap-2">
-                    <CheckCircle2 className="mt-0.5 h-5 w-5 flex-shrink-0 text-primary" />
-                    <span>{objective}</span>
-                  </li>
-                ))}
-              </ul>
+              {chapter.learning_objectives.length > 0 ? (
+                <ul className="space-y-2">
+                  {chapter.learning_objectives.map((objective, idx) => (
+                    <li key={idx} className="flex items-start gap-2">
+                      <CheckCircle2 className="mt-0.5 h-5 w-5 flex-shrink-0 text-primary" />
+                      <span>{objective}</span>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  Learning objectives will be available once you start studying this chapter. 
+                  Ask the AI assistant questions to begin!
+                </p>
+              )}
             </CardContent>
           </Card>
 
