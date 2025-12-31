@@ -68,7 +68,7 @@ class SubjectService:
             "user_id": user_id,
             "subject_name": subject_name,
             "syllabus_id": None,  # Empty until upload
-            "plan": {},           # Empty until Planner runs
+            "plan": None,         # Empty until Planner runs
             "status": "created",  # Lifecycle tracking
             "created_at": datetime.utcnow(),
             "updated_at": datetime.utcnow(),

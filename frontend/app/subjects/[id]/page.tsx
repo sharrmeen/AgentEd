@@ -82,6 +82,7 @@ export default function SubjectDetailPage() {
   const [subject, setSubject] = useState<Subject | null>(null)
   const [chapters, setChapters] = useState<Chapter[]>([])
   const [isUploading, setIsUploading] = useState(false)
+  const [activeTab, setActiveTab] = useState<"overview" | "study-plan">("overview")
 
   useEffect(() => {
     if (params.id) {
@@ -102,7 +103,7 @@ export default function SubjectDetailPage() {
         name: backendSubject.subject_name,
         description: "",
         syllabus_uploaded: !!backendSubject.syllabus_id,
-        study_plan_generated: backendSubject.status === "planned" || !!backendSubject.plan,
+        study_plan_generated: backendSubject.status === "planned" || (!!backendSubject.plan && !!backendSubject.plan.chapters),
         created_at: backendSubject.created_at,
       }
       setSubject(transformedSubject)
@@ -238,7 +239,7 @@ export default function SubjectDetailPage() {
             <p className="mt-2 text-muted-foreground">{subject.description || "No description provided"}</p>
           </div>
 
-          <Tabs defaultValue="overview" className="space-y-6">
+          <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as "overview" | "study-plan")} className="space-y-6">
             <TabsList>
               <TabsTrigger value="overview">Overview</TabsTrigger>
               <TabsTrigger value="study-plan">Study Plan</TabsTrigger>
@@ -311,10 +312,7 @@ export default function SubjectDetailPage() {
                         <Button
                           variant="outline"
                           className="w-full bg-transparent"
-                          onClick={() => {
-                            const studyPlanTab = document.querySelector('[value="study-plan"]') as HTMLButtonElement
-                            studyPlanTab?.click()
-                          }}
+                          onClick={() => setActiveTab("study-plan")}
                         >
                           View Study Plan
                         </Button>

@@ -1,3 +1,8 @@
+import os
+os.environ["CUDA_VISIBLE_DEVICES"] = ""
+
+
+
 """
 AgentEd Backend - Main FastAPI Application.
 
