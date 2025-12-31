@@ -23,7 +23,7 @@ from app.core.models.feedback import (
     FeedbackReport, ConceptAnalysis, RevisionItem,
     LearningInsight, FeedbackSummary
 )
-from app.core.models.quiz import QuizResult
+from app.core.models.quiz import QuizResult,Quiz
 from app.core.models.user import SubjectProfile, LearningProfile
 from app.services.quiz_service import QuizService
 from app.services.planner_service import PlannerService
