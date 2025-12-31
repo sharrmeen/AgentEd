@@ -23,9 +23,9 @@ from app.api.deps import get_user_id
 router = APIRouter()
 
 
-@router.get("/{result_id}", response_model=FeedbackResponse)
+@router.get("/{feedback_id}", response_model=FeedbackResponse)
 async def get_feedback(
-    result_id: str,
+    feedback_id: str,
     user_id: ObjectId = Depends(get_user_id)
 ):
     """
@@ -38,24 +38,32 @@ async def get_feedback(
     - Next steps
     
     Args:
-        result_id: Quiz result ID
+        feedback_id: Feedback ID or Quiz result ID
         
     Returns:
         Detailed feedback report
     """
     try:
-        result_obj_id = ObjectId(result_id)
+        obj_id = ObjectId(feedback_id)
     except Exception:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid result ID format"
+            detail="Invalid ID format"
         )
     
     try:
-        feedback = await FeedbackService.get_feedback_by_result(
+        # Try to get feedback by its own ID first
+        feedback = await FeedbackService.get_feedback_by_id(
             user_id=user_id,
-            result_id=result_obj_id
+            feedback_id=obj_id
         )
+        
+        # If not found, try by quiz result ID
+        if not feedback:
+            feedback = await FeedbackService.get_feedback_by_result(
+                user_id=user_id,
+                result_id=obj_id
+            )
         
         if not feedback:
             raise HTTPException(

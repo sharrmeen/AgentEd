@@ -16,29 +16,27 @@ import { api } from "@/lib/api"
 interface BackendQuizResult {
   id: string
   quiz_id: string
-  user_id: string
-  quiz_title: string
   subject_id: string
-  subject_name: string
-  chapter_number: number
   score: number
   max_score: number
   percentage: number
   passed: boolean
-  time_taken: number
-  answers: Array<{
+  time_taken_seconds: number
+  question_results: Array<{
     question_id: string
+    question_number: number
     question_text: string
-    selected_option: string
-    correct_option: string
+    user_answer: string
+    correct_answer: string
     is_correct: boolean
-    explanation?: string
-    marks_earned: number
-    max_marks: number
+    marks_obtained: number
+    marks_possible: number
+    explanation: string
+    concepts: string[]
   }>
-  started_at: string
-  completed_at: string
-  feedback_generated: boolean
+  strengths: string[]
+  weak_areas: string[]
+  completed_at: string | null
 }
 
 // Frontend display types
@@ -71,22 +69,22 @@ function getPerformanceLevel(percentage: number): string {
 }
 
 function transformResult(backend: BackendQuizResult): QuizResult {
-  const correct = backend.answers.filter((a) => a.is_correct).length
-  const incorrect = backend.answers.length - correct
+  const correct = backend.question_results.filter((a) => a.is_correct).length
+  const incorrect = backend.question_results.length - correct
 
   return {
     id: backend.id,
     quiz_id: backend.quiz_id,
     subject_id: backend.subject_id,
     score: Math.round(backend.percentage),
-    total_questions: backend.answers.length,
+    total_questions: backend.question_results.length,
     correct_answers: correct,
     incorrect_answers: incorrect,
     performance_level: getPerformanceLevel(backend.percentage),
-    questions: backend.answers.map((a) => ({
+    questions: backend.question_results.map((a) => ({
       question: a.question_text,
-      user_answer: a.selected_option,
-      correct_answer: a.correct_option,
+      user_answer: a.user_answer,
+      correct_answer: a.correct_answer,
       is_correct: a.is_correct,
       explanation: a.explanation,
     })),
@@ -240,7 +238,7 @@ export default function QuizResultsPage() {
                   <div>
                     <p className="text-sm font-medium text-muted-foreground">Your Answer:</p>
                     <p className={`text-sm ${question.is_correct ? "text-accent" : "text-destructive"}`}>
-                      {question.user_answer}
+                      {question.user_answer || <span className="italic text-muted-foreground">No answer provided</span>}
                     </p>
                   </div>
                   {!question.is_correct && (

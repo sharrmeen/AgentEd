@@ -43,6 +43,7 @@ interface BackendQuiz {
 // Frontend display types
 interface Question {
   id: string
+  number: number
   question: string
   type: "mcq" | "short_answer" | "true_false"
   options?: string[]
@@ -55,16 +56,32 @@ interface Quiz {
 }
 
 function transformQuiz(backend: BackendQuiz): Quiz {
+  console.log("Backend quiz data:", backend)
+  console.log("Questions:", backend.questions)
+  
   return {
     id: backend.id,
     title: backend.title,
-    questions: backend.questions.map((q) => ({
-      id: q.question_id,
-      question: q.text,
-      type: q.question_type === "multiple_choice" ? "mcq" : 
-            q.question_type === "true_false" ? "true_false" : "short_answer",
-      options: q.options,
-    })),
+    questions: backend.questions.map((q) => {
+      // Map backend question_type to frontend type
+      // Backend sends: "mcq", "short_answer", "true_false"
+      let type: "mcq" | "short_answer" | "true_false" = "short_answer"
+      if (q.question_type === "mcq" || q.question_type === "multiple_choice") {
+        type = "mcq"
+      } else if (q.question_type === "true_false") {
+        type = "true_false"
+      }
+      
+      console.log(`Q${q.question_number}: type=${q.question_type} -> ${type}, options=`, q.options)
+      
+      return {
+        id: q.question_id,
+        number: q.question_number,
+        question: q.text,
+        type,
+        options: q.options,
+      }
+    }),
   }
 }
 
@@ -118,15 +135,27 @@ export default function TakeQuizPage() {
     setIsSubmitting(true)
 
     try {
-      // Transform answers to backend format
-      const answersList = quiz.questions.map((q) => ({
-        question_id: q.id,
-        selected_option: answers[q.id],
-      }))
+      // Transform answers to backend format (Dict[str, str])
+      // Backend expects: { "1": "A", "2": "B" } where key is question_number as string
+      const answersDict: Record<string, string> = {}
+      
+      if (!quiz) {
+        throw new Error("Quiz data not loaded")
+      }
+      
+      quiz.questions.forEach((q) => {
+        if (answers[q.id]) {
+          const questionKey = String(q.number)
+          answersDict[questionKey] = answers[q.id]
+          console.log(`Mapping Q${q.number}: "${answers[q.id]}"`)
+        }
+      })
+      
+      console.log("Final answers dict to send:", answersDict)
 
       await api.post(`/api/v1/quiz/${params.id}/submit`, {
         quiz_id: params.id,
-        answers: answersList,
+        answers: answersDict,
         started_at: startedAtRef.current,
       })
 
@@ -205,7 +234,7 @@ export default function TakeQuizPage() {
               <div>
                 <h3 className="text-lg font-medium mb-4">{currentQuestion.question}</h3>
 
-                {currentQuestion.type === "mcq" && currentQuestion.options && (
+                {currentQuestion.type === "mcq" && currentQuestion.options && currentQuestion.options.length > 0 ? (
                   <RadioGroup
                     value={answers[currentQuestion.id] || ""}
                     onValueChange={(value) => setAnswers({ ...answers, [currentQuestion.id]: value })}
@@ -221,7 +250,17 @@ export default function TakeQuizPage() {
                       ))}
                     </div>
                   </RadioGroup>
-                )}
+                ) : currentQuestion.type === "mcq" ? (
+                  // MCQ but no options - fallback to text input
+                  <div>
+                    <p className="text-sm text-muted-foreground mb-2">Enter your answer:</p>
+                    <Input
+                      placeholder="Type your answer..."
+                      value={answers[currentQuestion.id] || ""}
+                      onChange={(e) => setAnswers({ ...answers, [currentQuestion.id]: e.target.value })}
+                    />
+                  </div>
+                ) : null}
 
                 {currentQuestion.type === "short_answer" && (
                   <Input

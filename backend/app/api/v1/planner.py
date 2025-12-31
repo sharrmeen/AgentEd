@@ -247,7 +247,7 @@ async def mark_objective_complete(
             planner_state=PlannerStateResponse(
                 **{
                     **result["planner_state"].dict(),
-                    'id': str(result["planner_state"]._id),
+                    'id': str(result["planner_state"].id) if result["planner_state"].id else None,
                     'subject_id': str(result["planner_state"].subject_id)
                 }
             )

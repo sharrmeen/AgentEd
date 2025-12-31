@@ -170,6 +170,12 @@ class QuizService:
         total_marks = 0
         
         for q in questions:
+            # Debug log question structure
+            print(f"📝 Creating quiz question {q.get('question_number', '?')}:")
+            print(f"   type: {q.get('question_type', 'mcq')}")
+            print(f"   options: {q.get('options', [])}")
+            print(f"   correct_answer: {q.get('correct_answer', '')}")
+            
             question = QuizQuestion(
                 question_id=ObjectId(),
                 question_number=q.get("question_number", len(quiz_questions) + 1),
@@ -405,6 +411,9 @@ class QuizService:
             "weak_areas": [...]
         }
         """
+        print(f"📊 Evaluating submission:")
+        print(f"   User answers received: {user_answers}")
+        
         question_results = []
         score = 0.0
         max_score = 0.0
@@ -428,6 +437,8 @@ class QuizService:
             q_num = str(q_number)
             user_answer = user_answers.get(q_num, "").strip()
             correct_answer = q_correct.strip() if q_correct else ""
+            
+            print(f"   Q{q_num}: user_answer='{user_answer}', correct='{correct_answer}', available_keys={list(user_answers.keys())}")
             
             # Check correctness
             is_correct = user_answer.lower() == correct_answer.lower()

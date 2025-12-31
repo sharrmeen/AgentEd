@@ -543,6 +543,22 @@ class FeedbackService:
     # ============================
     
     @staticmethod
+    async def get_feedback_by_id(
+        *,
+        user_id: ObjectId,
+        feedback_id: ObjectId
+    ) -> Optional[FeedbackReport]:
+        """Retrieve feedback by its own ID."""
+        feedback_col = db.feedback_reports()
+        
+        doc = await feedback_col.find_one({
+            "_id": feedback_id,
+            "user_id": user_id
+        })
+        
+        return FeedbackReport(**doc) if doc else None
+    
+    @staticmethod
     async def get_feedback_by_result(
         *,
         user_id: ObjectId,

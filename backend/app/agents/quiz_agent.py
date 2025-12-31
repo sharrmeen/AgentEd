@@ -212,59 +212,112 @@ async def quiz_agent_node(state: AgentEdState) -> Dict:
     try:
         # Get subject context
         subject = None
+        chapter_title = None
         if subject_id:
             subject = await SubjectService.get_subject_by_id(
                 user_id=ObjectId(user_id),
                 subject_id=ObjectId(subject_id)
             )
+            
+            # Get the actual chapter title from the plan
+            if subject and subject.plan and chapter_number:
+                chapters = subject.plan.get("chapters", [])
+                chapter_data = next(
+                    (ch for ch in chapters if ch.get("chapter_number") == chapter_number),
+                    None
+                )
+                if chapter_data:
+                    chapter_title = chapter_data.get("title")
+                    topic = chapter_title  # Use actual chapter title as topic
+                    print(f"📖 Found chapter: {chapter_number} - {chapter_title}")
         
         # Directly retrieve content using helper functions
         print(f"📚 Retrieving quiz content for: {topic}")
         
-        # Get quiz content
+        # Get quiz content - try with chapter title first, then fall back to "Chapter N"
+        chapter_filter = chapter_title if chapter_title else (f"Chapter {chapter_number}" if chapter_number else None)
         quiz_content = await _get_quiz_content(
             topic=topic,
             user_id=user_id,
             subject=subject.subject_name if subject else None,
-            chapter=f"Chapter {chapter_number}" if chapter_number else None
+            chapter=chapter_filter
         )
+        
+        # If no content found with chapter title, try without chapter filter
+        if "No content found" in quiz_content and chapter_filter:
+            print(f"⚠️ No content found for chapter '{chapter_filter}', trying without chapter filter...")
+            quiz_content = await _get_quiz_content(
+                topic=topic,
+                user_id=user_id,
+                subject=subject.subject_name if subject else None,
+                chapter=None
+            )
         
         # Get learning objectives
         learning_objectives = ""
+        objectives_list = []
         if subject_id and chapter_number:
             learning_objectives = await _get_objectives(
                 subject_id=subject_id,
                 user_id=user_id,
                 chapter_number=chapter_number
             )
+            # Parse objectives for the prompt
+            if learning_objectives and "Learning Objectives:" in learning_objectives:
+                objectives_list = [line.strip("- ").strip() for line in learning_objectives.split("\n") if line.strip().startswith("-")]
         
         print(f"✅ Retrieved content. Length: {len(quiz_content)} chars")
+        print(f"📋 Learning objectives: {objectives_list}")
         
         # Generate quiz using Pydantic structured output
         parser = PydanticOutputParser(pydantic_object=QuizOutput)
         num_questions = state.get('constraints', {}).get('num_questions', 5)
         
+        # Build objectives section for prompt
+        objectives_section = ""
+        if objectives_list:
+            objectives_section = f"""
+CRITICAL - LEARNING OBJECTIVES (Each question MUST relate to one of these):
+{chr(10).join(f"- {obj}" for obj in objectives_list)}
+
+You MUST generate questions that test these specific learning objectives. 
+Each question should directly assess knowledge or understanding of at least one of these objectives.
+Do NOT generate questions about topics not covered in the learning objectives.
+"""
+        
         # Build the full prompt as a string (not ChatPromptTemplate to avoid variable interpolation issues)
-        full_prompt = f"""You are an expert quiz creator (Formative Assessor).
+        full_prompt = f"""You are an expert quiz creator (Formative Assessor) for an educational study assistant.
 
 Topic: {topic}
 Subject: {subject.subject_name if subject else "Unknown"}
-Chapter: {chapter_number if chapter_number else "General"}
+Chapter Number: {chapter_number if chapter_number else "General"}
+Chapter Title: {chapter_title if chapter_title else topic}
 
 IMPORTANT: Generate a structured quiz response in valid JSON format only. Do not ask for information or explanations.
-
+{objectives_section}
 Your task:
-1. Generate {num_questions} questions grounded in the provided curriculum materials
+1. Generate exactly {num_questions} questions based ONLY on the learning objectives and course material provided
 2. Create varied question types: MCQ (60%), short answer (30%), true/false (10%)
-3. Ensure questions test understanding, not memorization
-4. Provide detailed explanations linking to source materials
+3. Ensure questions test understanding of the specific chapter content, not general knowledge
+4. Provide detailed explanations linking to the learning objectives
 
-{("Learning Objectives:" + learning_objectives) if learning_objectives else ""}
+CRITICAL FOR MCQ QUESTIONS:
+- For "mcq" type questions, you MUST provide exactly 4 options in the "options" array
+- The "correct_answer" MUST be the EXACT TEXT of one of the options (not A, B, C, D)
+- Example: if options are ["Paris", "London", "Berlin", "Madrid"], correct_answer should be "Paris" not "A"
 
-Course Material:
+CRITICAL FOR TRUE/FALSE QUESTIONS:
+- For "true_false" type, options should be ["True", "False"]
+- correct_answer should be "True" or "False"
+
+CRITICAL FOR SHORT ANSWER QUESTIONS:
+- For "short_answer" type, options array should be empty []
+- correct_answer should be the expected answer text
+
+COURSE MATERIAL (Use this as the basis for questions):
 {quiz_content}
 
-Generate a quiz titled "Quiz: {topic}" with {num_questions} questions.
+Generate a quiz titled "Chapter {chapter_number}: {chapter_title if chapter_title else topic} Quiz" with exactly {num_questions} questions.
 
 {parser.get_format_instructions()}"""
 
@@ -281,6 +334,8 @@ Generate a quiz titled "Quiz: {topic}" with {num_questions} questions.
                 "total_marks": quiz_dict["total_marks"],
                 "total_questions": len(quiz_dict["questions"])
             },
+            "chapter_title": chapter_title,  # Include chapter title for API response
+            "subject_name": subject.subject_name if subject else "Unknown",
             "messages": [
                 f"✅ Quiz generated: {quiz_dict['title']}\n"
                 f"   {len(quiz_dict['questions'])} questions, {quiz_dict['total_marks']} marks total"

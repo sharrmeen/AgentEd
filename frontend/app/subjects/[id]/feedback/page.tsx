@@ -72,7 +72,7 @@ interface BackendFeedback {
 }
 
 interface FeedbackListResponse {
-  feedback: Array<{
+  feedback_reports: Array<{
     id: string
     quiz_result_id: string
     quiz_title: string
@@ -95,17 +95,19 @@ interface Feedback {
 }
 
 function transformFeedback(backend: BackendFeedback): Feedback {
+  console.log("Backend feedback data:", backend)
+  
   return {
-    overall_score: Math.round(backend.percentage),
-    performance_level: backend.performance_level.replace("_", " ").replace(/\b\w/g, l => l.toUpperCase()),
-    performance_summary: backend.performance_summary,
-    strengths: backend.strengths,
-    areas_to_review: backend.weakness_details.map((w) => ({
-      topic: w.concept,
-      suggestion: w.suggestion,
+    overall_score: Math.round(backend.percentage || 0),
+    performance_level: (backend.performance_level || "needs_improvement").replace("_", " ").replace(/\b\w/g, l => l.toUpperCase()),
+    performance_summary: backend.performance_summary || "No summary available.",
+    strengths: backend.strengths || [],
+    areas_to_review: (backend.weakness_details || []).map((w) => ({
+      topic: w.concept || "Unknown",
+      suggestion: w.suggestion || "Review this topic.",
     })),
-    revision_tips: backend.revision_tips,
-    next_steps: backend.next_steps,
+    revision_tips: backend.revision_tips || ["Keep practicing to improve!"],
+    next_steps: backend.next_steps || ["Continue studying."],
   }
 }
 
@@ -138,9 +140,9 @@ export default function FeedbackPage() {
         // List all feedback for this subject and use the most recent one
         const listData = await api.get<FeedbackListResponse>(`/api/v1/feedback?subject_id=${params.id}`)
         
-        if (listData.feedback.length > 0) {
+        if (listData.feedback_reports && listData.feedback_reports.length > 0) {
           // Get the most recent feedback's full details
-          const latestFeedbackId = listData.feedback[0].id
+          const latestFeedbackId = listData.feedback_reports[0].id
           const data = await api.get<BackendFeedback>(`/api/v1/feedback/${latestFeedbackId}`)
           setFeedback(transformFeedback(data))
         } else {
