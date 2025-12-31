@@ -97,13 +97,19 @@ class FeedbackService:
         # -------------------------
         concept_analysis = FeedbackService._analyze_concepts(quiz_result)
         
+        # If quiz_result doesn't have strengths/weak_areas populated, extract from concept_analysis
+        strengths = quiz_result.strengths or [ca.concept for ca in concept_analysis if ca.mastery_level == "strong"]
+        weak_areas = quiz_result.weak_areas or [ca.concept for ca in concept_analysis if ca.mastery_level == "needs_attention"]
+        
         # -------------------------
         # 2️⃣ Generate Insights
         # -------------------------
         insights = FeedbackService._generate_insights(
             quiz_result=quiz_result,
             concept_analysis=concept_analysis,
-            planner_context=planner_context
+            planner_context=planner_context,
+            strengths=strengths,
+            weak_areas=weak_areas
         )
         
         # -------------------------
@@ -112,7 +118,7 @@ class FeedbackService:
         revision_plan = await FeedbackService._create_revision_plan(
             user_id=user_id,
             subject_id=quiz_result.subject_id,
-            weak_concepts=quiz_result.weak_areas,
+            weak_concepts=weak_areas,
             quiz=quiz
         )
         
@@ -139,8 +145,8 @@ class FeedbackService:
         # -------------------------
         next_steps = []
         
-        if quiz_result.weak_areas:
-            next_steps.append(f"Review these concepts: {', '.join(quiz_result.weak_areas[:3])}")
+        if weak_areas:
+            next_steps.append(f"Review these concepts: {', '.join(weak_areas[:3])}")
         
         next_steps.append("Practice more questions on weak areas")
         
@@ -171,19 +177,19 @@ class FeedbackService:
                 quiz_result, concept_analysis
             ),
             
-            "strengths": quiz_result.strengths,
+            "strengths": strengths,
             "strength_details": [
                 ca.model_dump() for ca in concept_analysis
                 if ca.mastery_level == "strong"
             ],
             
-            "weak_areas": quiz_result.weak_areas,
+            "weak_areas": weak_areas,
             "weakness_details": [
                 ca.model_dump() for ca in concept_analysis
                 if ca.mastery_level == "needs_attention"
             ],
             
-            "revision_tips": FeedbackService._generate_revision_tips(quiz_result.weak_areas),
+            "revision_tips": FeedbackService._generate_revision_tips(weak_areas),
             "revision_items": [r.model_dump() for r in revision_plan],
             "estimated_revision_time": sum(r.estimated_time or 0 for r in revision_plan) / 60,  # Hours
             
@@ -254,18 +260,49 @@ class FeedbackService:
         """
         Analyze mastery level for each concept.
         
+        If concepts aren't tagged in quiz, generate synthetic concepts from question groups.
         Returns list of ConceptAnalysis objects.
         """
         analyses = []
         
+        # If concept_scores is empty, generate synthetic concepts from question results
+        if not quiz_result.concept_scores:
+            # Group questions by correctness to create synthetic concepts
+            correct_questions = [qr for qr in quiz_result.question_results if qr.get("is_correct")]
+            incorrect_questions = [qr for qr in quiz_result.question_results if not qr.get("is_correct")]
+            
+            if len(quiz_result.question_results) > 0:
+                # Create "Overall Comprehension" concept
+                accuracy = (len(correct_questions) / len(quiz_result.question_results) * 100) if quiz_result.question_results else 0
+                
+                mastery_level = "strong" if accuracy >= 80 else ("developing" if accuracy >= 60 else "needs_attention")
+                suggestion = {
+                    "strong": "Excellent understanding demonstrated!",
+                    "developing": "You're on the right track. More practice will strengthen your skills.",
+                    "needs_attention": "Review the fundamental concepts and practice more questions."
+                }.get(mastery_level, "Keep practicing!")
+                
+                analyses.append(ConceptAnalysis(
+                    concept="Overall Comprehension",
+                    questions_on_concept=len(quiz_result.question_results),
+                    correct_answers=len(correct_questions),
+                    accuracy_percentage=accuracy,
+                    mastery_level=mastery_level,
+                    needs_revision=accuracy < 60,
+                    suggestion=suggestion
+                ))
+            
+            return analyses
+        
+        # Otherwise, analyze the actual concepts
         for concept, accuracy in quiz_result.concept_scores.items():
             # Count questions on this concept
             questions_on_concept = sum(
                 1 for qr in quiz_result.question_results
-                if concept in (qr.concepts_tested if hasattr(qr, 'concepts_tested') else qr.get("concepts_tested", []))
+                if concept in (qr.get("concepts_tested", []) if isinstance(qr, dict) else (qr.concepts_tested if hasattr(qr, 'concepts_tested') else []))
             )
             
-            correct_answers = int(questions_on_concept * accuracy / 100)
+            correct_answers = int(questions_on_concept * accuracy / 100) if questions_on_concept > 0 else 0
             
             # Determine mastery level
             if accuracy >= 80:
@@ -301,19 +338,25 @@ class FeedbackService:
         *,
         quiz_result: QuizResult,
         concept_analysis: List[ConceptAnalysis],
-        planner_context: Optional[Dict]
+        planner_context: Optional[Dict],
+        strengths: List[str] = None,
+        weak_areas: List[str] = None
     ) -> List[LearningInsight]:
         """
         Generate actionable learning insights.
         """
         insights = []
         
+        # Use provided strengths/weak_areas or fall back to quiz_result
+        strengths = strengths or quiz_result.strengths or []
+        weak_areas = weak_areas or quiz_result.weak_areas or []
+        
         # Insight 1: Strengths
-        if quiz_result.strengths:
+        if strengths:
             insights.append(LearningInsight(
                 insight_type="strength",
                 title="Your Strengths",
-                description=f"You're excelling in: {', '.join(quiz_result.strengths[:3])}",
+                description=f"You're excelling in: {', '.join(strengths[:3])}",
                 action_items=[
                     "Continue practicing these concepts",
                     "Help others who struggle with these topics"
@@ -321,11 +364,11 @@ class FeedbackService:
             ))
         
         # Insight 2: Weaknesses
-        if quiz_result.weak_areas:
+        if weak_areas:
             insights.append(LearningInsight(
                 insight_type="weakness",
                 title="Areas for Improvement",
-                description=f"Focus needed on: {', '.join(quiz_result.weak_areas[:3])}",
+                description=f"Focus needed on: {', '.join(weak_areas[:3])}",
                 action_items=[
                     "Review notes for these concepts",
                     "Practice more questions",
@@ -441,31 +484,81 @@ class FeedbackService:
         quiz_result: QuizResult,
         concept_analysis: List[ConceptAnalysis]
     ) -> str:
-        """Generate overall performance summary."""
+        """Generate detailed performance summary based on quiz results."""
         percentage = quiz_result.percentage
+        total_questions = quiz_result.correct_count + quiz_result.incorrect_count
+        
+        # Identify strong, developing, and needs_attention concepts
+        strong_concepts = [ca for ca in concept_analysis if ca.mastery_level == "strong"]
+        developing_concepts = [ca for ca in concept_analysis if ca.mastery_level == "developing"]
+        needs_attention = [ca for ca in concept_analysis if ca.mastery_level == "needs_attention"]
+        
+        summary_parts = []
         
         if percentage >= 80:
-            return f"Excellent performance! You demonstrated strong understanding across {len(concept_analysis)} concepts."
+            summary_parts.append(f"Excellent performance with a score of {percentage:.1f}%!")
+            if strong_concepts:
+                strong_names = [c.concept for c in strong_concepts[:3]]
+                summary_parts.append(f"You showed exceptional mastery in {', '.join(strong_names)}.")
+            if developing_concepts:
+                dev_names = [c.concept for c in developing_concepts[:2]]
+                summary_parts.append(f"With focused practice on {', '.join(dev_names)}, you could reach perfect scores.")
         elif percentage >= 60:
-            return f"Good effort! You showed competence in most areas, with room for improvement in {len(quiz_result.weak_areas)} concepts."
+            summary_parts.append(f"Good effort! You scored {percentage:.1f}% with {quiz_result.correct_count}/{total_questions} correct answers.")
+            if strong_concepts:
+                strong_names = [c.concept for c in strong_concepts[:2]]
+                summary_parts.append(f"Your strengths are in {', '.join(strong_names)}.")
+            if needs_attention:
+                weak_names = [c.concept for c in needs_attention[:2]]
+                summary_parts.append(f"Focus your revision efforts on {', '.join(weak_name for weak_name in weak_names)}.")
         else:
-            return f"This quiz highlighted {len(quiz_result.weak_areas)} areas that need more attention. Don't worry—focused revision will help!"
+            summary_parts.append(f"Score: {percentage:.1f}%. This quiz shows areas that need more attention and review.")
+            if developing_concepts or strong_concepts:
+                if strong_concepts:
+                    strong_names = [c.concept for c in strong_concepts[:1]]
+                    summary_parts.append(f"You have a foundation in {', '.join(strong_names)}—build on this.")
+                if developing_concepts:
+                    dev_names = [c.concept for c in developing_concepts[:1]]
+                    summary_parts.append(f"With more practice on {', '.join(dev_names)}, your performance will improve.")
+            if needs_attention:
+                weak_names = [c.concept for c in needs_attention[:3]]
+                summary_parts.append(f"Priority areas for revision: {', '.join(weak_name for weak_name in weak_names)}.")
+        
+        return " ".join(summary_parts)
     
     @staticmethod
     def _generate_revision_tips(weak_areas: List[str]) -> List[str]:
-        """Generate specific revision tips."""
+        """Generate specific, actionable revision tips based on weak areas."""
         if not weak_areas:
-            return ["Keep practicing to maintain your strong performance!"]
+            return [
+                "Keep practicing to maintain your strong performance!",
+                "Challenge yourself with harder quiz variations",
+                "Help peers who are struggling with these topics"
+            ]
         
-        tips = [
-            f"Review fundamentals of: {', '.join(weak_areas[:3])}",
-            "Read through your notes for these concepts",
-            "Practice additional questions on these topics",
-            "Create summary notes in your own words",
-            "Teach these concepts to someone else"
-        ]
+        tips = []
         
-        return tips[:5]
+        # Primary weak areas
+        if len(weak_areas) > 0:
+            primary = weak_areas[0]
+            tips.append(f"Focus first on: {primary} - Review the fundamental definitions and core principles")
+        
+        # Secondary weak areas
+        if len(weak_areas) > 1:
+            secondary = weak_areas[1]
+            tips.append(f"Work on {secondary} by practicing similar problems from your notes")
+        
+        # Additional tips based on number of weak areas
+        if len(weak_areas) > 2:
+            tips.append(f"Create a study schedule for these {len(weak_areas)} concepts - practice one per day")
+        else:
+            tips.append(f"Review your lecture notes for {weak_areas[0]} and write summary notes in your own words")
+        
+        tips.append("Take timed practice quizzes on weak areas - start with easier questions")
+        tips.append("Form a study group to discuss confusing concepts with peers")
+        tips.append("Visit office hours or seek additional resources for topics you're struggling with")
+        
+        return tips[:6]  # Return top 6 tips
     
     @staticmethod
     def _determine_progress_change(percentage: float) -> str:

@@ -89,7 +89,20 @@ interface Feedback {
   performance_level: string
   performance_summary: string
   strengths: string[]
-  areas_to_review: Array<{ topic: string; suggestion: string }>
+  strength_details: Array<{
+    concept: string
+    accuracy_percentage: number
+    correct_answers: number
+    questions_on_concept: number
+    suggestion: string
+  }>
+  areas_to_review: Array<{
+    topic: string
+    suggestion: string
+    accuracy_percentage: number
+    correct_answers: number
+    questions_on_concept: number
+  }>
   revision_tips: string[]
   next_steps: string[]
 }
@@ -102,9 +115,19 @@ function transformFeedback(backend: BackendFeedback): Feedback {
     performance_level: (backend.performance_level || "needs_improvement").replace("_", " ").replace(/\b\w/g, l => l.toUpperCase()),
     performance_summary: backend.performance_summary || "No summary available.",
     strengths: backend.strengths || [],
+    strength_details: (backend.strength_details || []).map((s) => ({
+      concept: s.concept || "Unknown",
+      accuracy_percentage: Math.round(s.accuracy_percentage || 0),
+      correct_answers: s.correct_answers || 0,
+      questions_on_concept: s.questions_on_concept || 0,
+      suggestion: s.suggestion || "Keep practicing this topic."
+    })),
     areas_to_review: (backend.weakness_details || []).map((w) => ({
       topic: w.concept || "Unknown",
       suggestion: w.suggestion || "Review this topic.",
+      accuracy_percentage: Math.round(w.accuracy_percentage || 0),
+      correct_answers: w.correct_answers || 0,
+      questions_on_concept: w.questions_on_concept || 0
     })),
     revision_tips: backend.revision_tips || ["Keep practicing to improve!"],
     next_steps: backend.next_steps || ["Continue studying."],
@@ -133,21 +156,27 @@ export default function FeedbackPage() {
       const resultId = searchParams.get("result_id")
       
       if (resultId) {
-        // Fetch specific feedback for a quiz result
-        const data = await api.get<BackendFeedback>(`/api/v1/feedback/${resultId}`)
+        try {
+          // Fetch specific feedback for a quiz result
+          const data = await api.get<BackendFeedback>(`/api/v1/feedback/${resultId}`)
+          setFeedback(transformFeedback(data))
+          return
+        } catch (error) {
+          console.warn("Could not fetch feedback by result ID, trying to fetch latest...", error)
+          // Fall through to fetch latest
+        }
+      }
+      
+      // List all feedback for this subject and use the most recent one
+      const listData = await api.get<FeedbackListResponse>(`/api/v1/feedback?subject_id=${params.id}`)
+      
+      if (listData.feedback_reports && listData.feedback_reports.length > 0) {
+        // Get the most recent feedback's full details
+        const latestFeedbackId = listData.feedback_reports[0].id
+        const data = await api.get<BackendFeedback>(`/api/v1/feedback/${latestFeedbackId}`)
         setFeedback(transformFeedback(data))
       } else {
-        // List all feedback for this subject and use the most recent one
-        const listData = await api.get<FeedbackListResponse>(`/api/v1/feedback?subject_id=${params.id}`)
-        
-        if (listData.feedback_reports && listData.feedback_reports.length > 0) {
-          // Get the most recent feedback's full details
-          const latestFeedbackId = listData.feedback_reports[0].id
-          const data = await api.get<BackendFeedback>(`/api/v1/feedback/${latestFeedbackId}`)
-          setFeedback(transformFeedback(data))
-        } else {
-          setFeedback(null)
-        }
+        setFeedback(null)
       }
     } catch (error) {
       toast({
@@ -219,14 +248,24 @@ export default function FeedbackPage() {
                   <CardDescription>Areas where you excel</CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <ul className="space-y-2">
-                    {feedback.strengths.map((strength, idx) => (
-                      <li key={idx} className="flex items-start gap-2">
-                        <div className="mt-1 h-1.5 w-1.5 rounded-full bg-accent flex-shrink-0" />
-                        <span className="text-sm">{strength}</span>
-                      </li>
-                    ))}
-                  </ul>
+                  <div className="space-y-4">
+                    {feedback.strength_details.length > 0 ? (
+                      feedback.strength_details.map((detail, idx) => (
+                        <div key={idx} className="border-l-2 border-accent pl-4">
+                          <div className="flex items-center justify-between mb-1">
+                            <p className="font-medium text-sm">{detail.concept}</p>
+                            <span className="text-accent font-bold">{detail.accuracy_percentage}%</span>
+                          </div>
+                          <p className="text-xs text-muted-foreground mb-2">
+                            {detail.correct_answers}/{detail.questions_on_concept} questions correct
+                          </p>
+                          <p className="text-sm text-muted-foreground italic">{detail.suggestion}</p>
+                        </div>
+                      ))
+                    ) : (
+                      <p className="text-sm text-muted-foreground">No strong areas identified yet.</p>
+                    )}
+                  </div>
                 </CardContent>
               </Card>
 
@@ -239,12 +278,22 @@ export default function FeedbackPage() {
                   <CardDescription>Topics that need more attention</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  {feedback.areas_to_review.map((area, idx) => (
-                    <div key={idx} className="space-y-1">
-                      <p className="text-sm font-medium">{area.topic}</p>
-                      <p className="text-sm text-muted-foreground">{area.suggestion}</p>
-                    </div>
-                  ))}
+                  {feedback.areas_to_review.length > 0 ? (
+                    feedback.areas_to_review.map((area, idx) => (
+                      <div key={idx} className="border-l-2 border-amber-500 pl-4 pb-3">
+                        <div className="flex items-center justify-between mb-1">
+                          <p className="font-medium text-sm">{area.topic}</p>
+                          <span className="text-amber-500 font-bold">{area.accuracy_percentage}%</span>
+                        </div>
+                        <p className="text-xs text-muted-foreground mb-2">
+                          {area.correct_answers}/{area.questions_on_concept} questions correct
+                        </p>
+                        <p className="text-sm text-muted-foreground italic">{area.suggestion}</p>
+                      </div>
+                    ))
+                  ) : (
+                    <p className="text-sm text-muted-foreground">No weak areas identified—excellent work!</p>
+                  )}
                 </CardContent>
               </Card>
 

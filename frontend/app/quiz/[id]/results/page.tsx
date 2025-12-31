@@ -210,7 +210,10 @@ export default function QuizResultsPage() {
                   <RotateCcw className="h-4 w-4" />
                   Retake Quiz
                 </Button>
-                <Button className="flex-1" onClick={() => router.push(`/subjects/${results.subject_id}/feedback`)}>
+                <Button 
+                  className="flex-1" 
+                  onClick={() => router.push(`/subjects/${results.subject_id}/feedback?result_id=${results.id}`)}
+                >
                   View Feedback
                 </Button>
               </div>
