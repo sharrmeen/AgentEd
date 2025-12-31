@@ -8,7 +8,7 @@ Exposes all services directly via RESTful endpoints.
 
 from fastapi import APIRouter
 
-from app.api.v1 import auth, subjects, syllabus, planner, sessions, chat, notes, quiz, feedback, dashboard
+from app.api.v1 import auth, subjects, syllabus, planner, sessions, chat, notes, quiz, feedback, dashboard, notifications
 
 router = APIRouter(tags=["v1"])
 
@@ -23,3 +23,4 @@ router.include_router(notes.router, prefix="/notes", tags=["notes"])
 router.include_router(quiz.router, prefix="/quiz", tags=["quiz"])
 router.include_router(feedback.router, prefix="/feedback", tags=["feedback"])
 router.include_router(dashboard.router, prefix="/dashboard", tags=["dashboard"])
+router.include_router(notifications.router, prefix="/notifications", tags=["notifications"])

@@ -67,6 +67,16 @@ class Settings(BaseSettings):
     ALLOWED_EXTENSIONS: List[str] = ["pdf", "docx", "png", "jpg", "jpeg"]
     # (Removed CHROMA_DB_DIRECTORY: use CHROMA_PERSIST_DIRECTORY only)
     
+    # ============================
+    # EMAIL / SMTP
+    # ============================
+    SMTP_HOST: str = "smtp.gmail.com"
+    SMTP_PORT: int = 587
+    SMTP_USER: Optional[str] = None
+    SMTP_PASSWORD: Optional[str] = None
+    FROM_EMAIL: str = "noreply@agented.com"
+    FROM_NAME: str = "AgentED"
+    
     
     
     class Config:
