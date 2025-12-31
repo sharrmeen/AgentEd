@@ -72,6 +72,7 @@ interface Chapter {
   estimated_hours: number
   learning_objectives: string[]
   completed_objectives: number
+  completed_objectives_list: string[]
 }
 
 export default function SubjectDetailPage() {
@@ -117,7 +118,8 @@ export default function SubjectDetailPage() {
           const transformedChapters: Chapter[] = backendSubject.plan.chapters.map((ch) => {
             const chapterKey = ch.chapter_number.toString()
             const progress = plannerState.chapter_progress?.[chapterKey]
-            const completedCount = progress?.completed_objectives?.length || 0
+            const completedList = progress?.completed_objectives || []
+            const completedCount = completedList.length
             
             return {
               chapter_number: ch.chapter_number,
@@ -125,6 +127,7 @@ export default function SubjectDetailPage() {
               estimated_hours: ch.estimated_hours,
               learning_objectives: ch.objectives || [],
               completed_objectives: completedCount,
+              completed_objectives_list: completedList,
             }
           })
           setChapters(transformedChapters)
@@ -136,6 +139,7 @@ export default function SubjectDetailPage() {
             estimated_hours: ch.estimated_hours,
             learning_objectives: ch.objectives || [],
             completed_objectives: 0,
+            completed_objectives_list: [],
           }))
           setChapters(transformedChapters)
         }
@@ -391,7 +395,7 @@ export default function SubjectDetailPage() {
                   {chapters.map((chapter) => {
                     const chapterProgress =
                       chapter.learning_objectives.length > 0
-                        ? Math.round((chapter.completed_objectives / chapter.learning_objectives.length) * 100)
+                        ? Math.min(100, Math.round((chapter.completed_objectives / chapter.learning_objectives.length) * 100))
                         : 0
 
                     return (
@@ -430,12 +434,19 @@ export default function SubjectDetailPage() {
                           <div>
                             <p className="mb-2 text-sm font-medium">Learning Objectives:</p>
                             <ul className="space-y-2">
-                              {chapter.learning_objectives.map((objective, idx) => (
-                                <li key={idx} className="flex items-start gap-2 text-sm">
-                                  <Circle className="mt-0.5 h-4 w-4 flex-shrink-0 text-muted-foreground" />
-                                  <span>{objective}</span>
-                                </li>
-                              ))}
+                              {chapter.learning_objectives.map((objective, idx) => {
+                                const isCompleted = chapter.completed_objectives_list.includes(objective)
+                                return (
+                                  <li key={idx} className="flex items-start gap-2 text-sm">
+                                    {isCompleted ? (
+                                      <CheckCircle2 className="mt-0.5 h-4 w-4 flex-shrink-0 text-accent" />
+                                    ) : (
+                                      <Circle className="mt-0.5 h-4 w-4 flex-shrink-0 text-muted-foreground" />
+                                    )}
+                                    <span className={isCompleted ? "text-muted-foreground" : ""}>{objective}</span>
+                                  </li>
+                                )
+                              })}
                             </ul>
                           </div>
                         </CardContent>

@@ -38,6 +38,14 @@ interface LearningProfile {
   subjects: Record<string, { average_score: number }>
 }
 
+// Dashboard stats from real-time endpoint
+interface DashboardStats {
+  total_study_hours: number
+  quizzes_completed: number
+  current_streak: number
+  average_score: number
+}
+
 // Frontend display type
 interface Subject {
   id: string
@@ -84,10 +92,10 @@ export default function DashboardPage() {
     try {
       setIsLoading(true)
       
-      // Fetch subjects and learning profile in parallel
-      const [subjectsResponse, profileResponse] = await Promise.all([
+      // Fetch subjects and dashboard stats in parallel
+      const [subjectsResponse, dashboardStats] = await Promise.all([
         api.get<SubjectsResponse>("/api/v1/subjects/"),
-        api.get<LearningProfile>("/api/v1/auth/profile/learning").catch(() => null),
+        api.get<DashboardStats>("/api/v1/dashboard/stats").catch(() => null),
       ])
 
       // Transform backend subjects to frontend format
@@ -121,18 +129,13 @@ export default function DashboardPage() {
       
       setSubjects(transformedSubjects)
 
-      // Calculate stats from learning profile
-      if (profileResponse) {
-        const subjectScores = Object.values(profileResponse.subjects || {})
-        const avgScore = subjectScores.length > 0 
-          ? subjectScores.reduce((sum, s) => sum + (s.average_score || 0), 0) / subjectScores.length 
-          : 0
-
+      // Set stats from dashboard stats endpoint (calculated in real-time)
+      if (dashboardStats) {
         setStats({
-          total_study_hours: profileResponse.total_study_hours || 0,
-          quizzes_completed: profileResponse.total_quizzes_completed || 0,
-          current_streak: profileResponse.streak_days || 0,
-          average_score: Math.round(avgScore),
+          total_study_hours: dashboardStats.total_study_hours || 0,
+          quizzes_completed: dashboardStats.quizzes_completed || 0,
+          current_streak: dashboardStats.current_streak || 0,
+          average_score: Math.round(dashboardStats.average_score || 0),
         })
       } else {
         setStats({
