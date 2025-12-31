@@ -46,6 +46,7 @@ interface Subject {
   created_at: string
   syllabus_uploaded: boolean
   study_plan_generated: boolean
+  completion_percent?: number
 }
 
 interface Stats {
@@ -90,7 +91,34 @@ export default function DashboardPage() {
       ])
 
       // Transform backend subjects to frontend format
-      const transformedSubjects = subjectsResponse.subjects.map(transformSubject)
+      let transformedSubjects = subjectsResponse.subjects.map(transformSubject)
+      
+      // Fetch planner states for subjects with plans
+      const subjectsWithPlans = transformedSubjects.filter(s => s.study_plan_generated)
+      if (subjectsWithPlans.length > 0) {
+        try {
+          const plannerStates = await Promise.all(
+            subjectsWithPlans.map(s =>
+              api.get<any>(`/api/v1/planner/${s.id}`).catch(() => null)
+            )
+          )
+          
+          // Update subjects with completion percentages
+          transformedSubjects = transformedSubjects.map((subject, idx) => {
+            if (subject.study_plan_generated && subjectsWithPlans[idx]?.id === subject.id) {
+              const planner = plannerStates[idx]
+              return {
+                ...subject,
+                completion_percent: planner?.completion_percent || 0,
+              }
+            }
+            return subject
+          })
+        } catch (error) {
+          console.log("Could not fetch planner states, using defaults")
+        }
+      }
+      
       setSubjects(transformedSubjects)
 
       // Calculate stats from learning profile
@@ -143,7 +171,8 @@ export default function DashboardPage() {
   const getProgressPercentage = (subject: Subject) => {
     if (!subject.syllabus_uploaded) return 0
     if (!subject.study_plan_generated) return 33
-    return 66
+    // Return actual completion percentage from planner state, or at least 33 to show plan exists
+    return subject.completion_percent ?? 33
   }
 
   const getTimeSince = (dateString: string) => {
