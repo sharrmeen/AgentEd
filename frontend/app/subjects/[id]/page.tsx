@@ -357,7 +357,7 @@ export default function SubjectDetailPage() {
                       </div>
                       <div>
                         <div className="text-2xl font-bold">{completedObjectives}</div>
-                        <div className="text-xs text-muted-foreground">Completed</div>
+                        <div className="text-xs text-muted-foreground">Completed Objectives</div>
                       </div>
                       <div>
                         <div className="text-2xl font-bold">{totalObjectives}</div>

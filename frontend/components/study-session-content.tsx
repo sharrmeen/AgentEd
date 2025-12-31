@@ -511,7 +511,7 @@ export function StudySessionContent() {
   }
 
   return (
-    <main className="container mx-auto px-4 py-8">
+    <main className="container mx-auto px-4 py-8 min-h-screen overflow-y-auto">
       {/* Notes Upload Dialog */}
       <Dialog open={showUploadDialog} onOpenChange={setShowUploadDialog}>
         <DialogContent className="sm:max-w-[500px]">
@@ -679,7 +679,7 @@ export function StudySessionContent() {
       <div className="grid gap-6 lg:grid-cols-3">
         {/* Main Chat Area */}
         <div className="lg:col-span-2">
-          <Card className="flex flex-col h-[calc(100vh-320px)] border-2 border-primary/10">
+          <Card className="flex flex-col min-h-[500px] h-[calc(100vh-280px)] max-h-[800px] border-2 border-primary/10">
             <CardHeader className="border-b bg-gradient-to-r from-primary/5 to-transparent">
               <div className="flex items-start justify-between">
                 <div>
@@ -698,8 +698,8 @@ export function StudySessionContent() {
               </div>
             </CardHeader>
 
-            <CardContent className="flex-1 flex flex-col p-4 overflow-hidden">
-              <ScrollArea className="flex-1 pr-4 mb-4">
+            <CardContent className="flex-1 flex flex-col p-4 min-h-0">
+              <ScrollArea className="flex-1 pr-4 mb-4 min-h-0">
                 {messages.length === 0 ? (
                   <div className="flex h-full items-center justify-center text-center p-8">
                     <div className="space-y-4 max-w-sm">
@@ -717,22 +717,43 @@ export function StudySessionContent() {
                     </div>
                   </div>
                 ) : (
-                  <div className="space-y-3">
+                  <div className="space-y-4">
                     {messages.map((message, idx) => (
                       <div
                         key={idx}
                         className={`flex ${message.role === "user" ? "justify-end" : "justify-start"} animate-in fade-in slide-in-from-bottom-2`}
                       >
                         <div
-                          className={`max-w-xs px-4 py-3 rounded-lg text-sm ${
+                          className={`px-4 py-3 rounded-lg ${
                             message.role === "user"
-                              ? "bg-primary text-primary-foreground rounded-br-none"
-                              : "bg-muted text-foreground rounded-bl-none border border-border"
+                              ? "max-w-[80%] bg-primary text-primary-foreground rounded-br-none text-sm"
+                              : "max-w-[90%] bg-muted text-foreground rounded-bl-none border border-border"
                           }`}
                         >
-                          <p className="leading-relaxed">{message.content}</p>
+                          {message.role === "assistant" ? (
+                            <div className="prose prose-sm dark:prose-invert max-w-none">
+                              <div 
+                                className="leading-relaxed whitespace-pre-wrap"
+                                dangerouslySetInnerHTML={{ 
+                                  __html: message.content
+                                    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+                                    .replace(/\*(.+?)\*/g, '<em>$1</em>')
+                                    .replace(/^#{3}\s+(.+)$/gm, '<h4 class="font-semibold text-base mt-3 mb-1">$1</h4>')
+                                    .replace(/^#{2}\s+(.+)$/gm, '<h3 class="font-semibold text-lg mt-3 mb-1">$1</h3>')
+                                    .replace(/^#{1}\s+(.+)$/gm, '<h2 class="font-bold text-xl mt-3 mb-2">$1</h2>')
+                                    .replace(/^[-•]\s+(.+)$/gm, '<li class="ml-4">$1</li>')
+                                    .replace(/^\d+\.\s+(.+)$/gm, '<li class="ml-4 list-decimal">$1</li>')
+                                    .replace(/`([^`]+)`/g, '<code class="bg-background/50 px-1 py-0.5 rounded text-xs">$1</code>')
+                                    .replace(/\n\n/g, '</p><p class="mt-2">')
+                                    .replace(/\n/g, '<br/>')
+                                }}
+                              />
+                            </div>
+                          ) : (
+                            <p className="leading-relaxed">{message.content}</p>
+                          )}
                           {message.role === "assistant" && message.confidence && (
-                            <p className="text-xs opacity-70 mt-1">
+                            <p className="text-xs opacity-70 mt-2 pt-2 border-t border-border/50">
                               Confidence: {(message.confidence * 100).toFixed(0)}%
                             </p>
                           )}
@@ -759,7 +780,7 @@ export function StudySessionContent() {
               </ScrollArea>
 
               {/* Message Input Area */}
-              <div className="space-y-3 border-t pt-4">
+              <div className="flex-shrink-0 space-y-2 border-t pt-3">
                 <Textarea
                   placeholder="Ask something about this chapter..."
                   value={userMessage}
@@ -771,14 +792,13 @@ export function StudySessionContent() {
                     }
                   }}
                   disabled={isSending || !chatId}
-                  rows={3}
-                  className="resize-none border-primary/20 focus:border-primary/50"
+                  rows={2}
+                  className="resize-none border-primary/20 focus:border-primary/50 min-h-[60px]"
                 />
                 <Button 
                   onClick={sendMessage} 
                   disabled={isSending || !userMessage.trim() || !chatId}
                   className="w-full gap-2"
-                  size="lg"
                 >
                   <Send className="h-4 w-4" />
                   {isSending ? "Sending..." : "Send Question"}
