@@ -31,6 +31,23 @@ interface SubjectsResponse {
   total: number
 }
 
+interface SessionResponse {
+  id: string
+  subject_id: string
+  chapter_number: number
+  chapter_title: string
+  chat_id: string | null
+  notes_uploaded: boolean
+  status: string
+  last_active: string | null
+  created_at: string
+}
+
+interface SessionListResponse {
+  sessions: SessionResponse[]
+  total: number
+}
+
 // Dashboard stats from real-time endpoint
 interface DashboardStats {
   total_study_hours: number
@@ -45,6 +62,7 @@ interface Subject {
   name: string
   description: string
   created_at: string
+  last_active?: string | null
   syllabus_uploaded: boolean
   study_plan_generated: boolean
   completion_percent?: number
@@ -93,6 +111,37 @@ export default function DashboardPage() {
 
       // Transform backend subjects to frontend format
       let transformedSubjects = subjectsResponse.subjects.map(transformSubject)
+      
+      // Fetch session data for all subjects to get last_active timestamp
+      try {
+        const sessionDataPromises = transformedSubjects.map(s =>
+          api.get<SessionListResponse>(`/api/v1/sessions/subject/${s.id}`).catch(() => null)
+        )
+        const sessionDataArray = await Promise.all(sessionDataPromises)
+        
+        // Update subjects with last_active from most recent session
+        transformedSubjects = transformedSubjects.map((subject, idx) => {
+          const sessionData = sessionDataArray[idx]
+          let lastActive: string | null = null
+          
+          if (sessionData && sessionData.sessions && sessionData.sessions.length > 0) {
+            // Find the most recent last_active from all sessions
+            const mostRecentSession = sessionData.sessions.reduce((max, session) => {
+              if (!max || !session.last_active) return max
+              if (!max.last_active) return session
+              return new Date(session.last_active) > new Date(max.last_active) ? session : max
+            })
+            lastActive = mostRecentSession?.last_active || null
+          }
+          
+          return {
+            ...subject,
+            last_active: lastActive,
+          }
+        })
+      } catch (error) {
+        console.log("Could not fetch session data, last_active will be null")
+      }
       
       // Fetch planner states for subjects with plans
       const subjectsWithPlans = transformedSubjects.filter(s => s.study_plan_generated)
@@ -214,23 +263,23 @@ export default function DashboardPage() {
 
                 <Card>
                   <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium">Quizzes</CardTitle>
-                    <BookOpen className="h-4 w-4 text-muted-foreground" />
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-2xl font-bold">{stats?.quizzes_completed || 0}</div>
-                    <p className="text-xs text-muted-foreground">Completed so far</p>
-                  </CardContent>
-                </Card>
-
-                <Card>
-                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                     <CardTitle className="text-sm font-medium">Current Streak</CardTitle>
                     <Trophy className="h-4 w-4 text-muted-foreground" />
                   </CardHeader>
                   <CardContent>
                     <div className="text-2xl font-bold">{stats?.current_streak || 0} days</div>
                     <p className="text-xs text-muted-foreground">Keep it going!</p>
+                  </CardContent>
+                </Card>
+
+                                <Card>
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    <CardTitle className="text-sm font-medium">Quizzes</CardTitle>
+                    <BookOpen className="h-4 w-4 text-muted-foreground" />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold">{stats?.quizzes_completed || 0}</div>
+                    <p className="text-xs text-muted-foreground">Completed so far</p>
                   </CardContent>
                 </Card>
 
@@ -284,9 +333,11 @@ export default function DashboardPage() {
                             >
                               {subject.name}
                             </CardTitle>
-                            <CardDescription className="mt-1 line-clamp-2">
-                              {subject.description || "No description"}
-                            </CardDescription>
+                            {subject.description && (
+                              <CardDescription className="mt-1 line-clamp-2">
+                                {subject.description}
+                              </CardDescription>
+                            )}
                           </div>
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
@@ -314,9 +365,11 @@ export default function DashboardPage() {
                             <span className="font-medium">{getProgressPercentage(subject)}%</span>
                           </div>
                           <Progress value={getProgressPercentage(subject)} className="h-2" />
-                          <div className="flex items-center justify-between text-xs text-muted-foreground">
-                            <span>Last active: {getTimeSince(subject.created_at)}</span>
-                          </div>
+                          {subject.last_active && (
+                            <div className="flex items-center justify-between text-xs text-muted-foreground">
+                              <span>Last active: {getTimeSince(subject.last_active)}</span>
+                            </div>
+                          )}
                         </div>
                       </CardContent>
                     </Card>
