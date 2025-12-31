@@ -36,6 +36,13 @@ import {
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 
 
 // Backend response types
@@ -161,6 +168,9 @@ export function StudySessionContent() {
   const [isUploading, setIsUploading] = useState(false)
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [subjectName, setSubjectName] = useState<string>("")
+  
+  // Intent selection state
+  const [selectedIntent, setSelectedIntent] = useState<"answer" | "explain" | "summarize">("answer")
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -334,7 +344,7 @@ export function StudySessionContent() {
       // Endpoint: POST /api/v1/chat/{chat_id}/message
       const response = await api.post<ChatMessageResponse>(`/api/v1/chat/${chatId}/message`, {
         question: userMessage,
-        intent_tag: "answer",
+        intent_tag: selectedIntent,
       })
 
       setMessages((prev) => [...prev, { 
@@ -795,14 +805,45 @@ export function StudySessionContent() {
                   rows={2}
                   className="resize-none border-primary/20 focus:border-primary/50 min-h-[60px]"
                 />
-                <Button 
-                  onClick={sendMessage} 
-                  disabled={isSending || !userMessage.trim() || !chatId}
-                  className="w-full gap-2"
-                >
-                  <Send className="h-4 w-4" />
-                  {isSending ? "Sending..." : "Send Question"}
-                </Button>
+                <div className="flex gap-2">
+                  <Select
+                    value={selectedIntent}
+                    onValueChange={(value: "answer" | "explain" | "summarize") => setSelectedIntent(value)}
+                    disabled={isSending || !chatId}
+                  >
+                    <SelectTrigger className="w-[140px]">
+                      <SelectValue placeholder="Intent" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="answer">
+                        <div className="flex items-center gap-2">
+                          <MessageCircle className="h-4 w-4" />
+                          <span>Answer</span>
+                        </div>
+                      </SelectItem>
+                      <SelectItem value="explain">
+                        <div className="flex items-center gap-2">
+                          <Sparkles className="h-4 w-4" />
+                          <span>Explain</span>
+                        </div>
+                      </SelectItem>
+                      <SelectItem value="summarize">
+                        <div className="flex items-center gap-2">
+                          <BookOpen className="h-4 w-4" />
+                          <span>Summarize</span>
+                        </div>
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Button 
+                    onClick={sendMessage} 
+                    disabled={isSending || !userMessage.trim() || !chatId}
+                    className="flex-1 gap-2"
+                  >
+                    <Send className="h-4 w-4" />
+                    {isSending ? "Sending..." : "Send Question"}
+                  </Button>
+                </div>
               </div>
             </CardContent>
           </Card>
