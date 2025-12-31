@@ -45,8 +45,9 @@ class RetrievalService:
         # ---------------------------
         # BUILD FILTER (CRITICAL)
         # ---------------------------
+        user_id_str = str(user_id)
         filter_clauses = [
-            {"user_id": {"$eq": str(user_id)}}
+            {"user_id": {"$eq": user_id_str}}
         ]
 
         if subject:
@@ -54,16 +55,42 @@ class RetrievalService:
         if chapter:
             filter_clauses.append({"chapter": {"$eq": chapter}})
 
-        filter_dict = {"$and": filter_clauses}
+        # Only use $and if we have multiple filter clauses
+        # ChromaDB requires $and to have at least 2 conditions
+        if len(filter_clauses) > 1:
+            filter_dict = {"$and": filter_clauses}
+        else:
+            filter_dict = filter_clauses[0]
+        
+        # Debug logging
+        print(f"🔍 RAG Query:")
+        print(f"   Question: {question}")
+        print(f"   User ID: {user_id_str}")
+        print(f"   Subject filter: {subject}")
+        print(f"   Chapter filter: {chapter}")
+        print(f"   Filter: {filter_dict}")
 
         # ---------------------------
         # SIMILARITY SEARCH
         # ---------------------------
-        results = db.similarity_search_with_score(
-            prefixed_question,
-            k=k,
-            filter=filter_dict
-        )
+        try:
+            results = db.similarity_search_with_score(
+                prefixed_question,
+                k=k,
+                filter=filter_dict
+            )
+        except Exception as e:
+            print(f"❌ ChromaDB filter error: {e}")
+            print(f"   Retrying without subject/chapter filters...")
+            # Fallback: try without subject/chapter filters
+            filter_dict = {"$and": [{"user_id": {"$eq": user_id_str}}]}
+            results = db.similarity_search_with_score(
+                prefixed_question,
+                k=k,
+                filter=filter_dict
+            )
+        
+        print(f"   Found {len(results)} results from ChromaDB")
 
         processed_results = []
         seen_chunk_ids = set()
@@ -76,6 +103,9 @@ class RetrievalService:
                 content = content[9:]
 
             chunk_id = doc.metadata.get("chunk_id", "unknown")
+            
+            print(f"   ✓ Result: {chunk_id[:8]}... (confidence: {confidence:.4f})")
+            print(f"     Metadata: subject={doc.metadata.get('subject')}, chapter={doc.metadata.get('chapter')}, user_id={doc.metadata.get('user_id')}")
 
             processed_results.append({
                 "content": content,

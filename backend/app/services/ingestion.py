@@ -53,7 +53,11 @@ class IngestionService:
     """
     
     def __init__(self, db_directory="./chroma_db", subject=None, chapter=None,user_id=None):
-        self.db_directory = db_directory
+        # Ensure db_directory exists and is absolute path
+        self.db_directory = os.path.abspath(db_directory)
+        os.makedirs(self.db_directory, exist_ok=True)
+        print(f"📁 ChromaDB directory: {self.db_directory}")
+        
         self.embedding_model = get_embedding_model()
 
         
@@ -61,16 +65,26 @@ class IngestionService:
         self.subject = subject
         self.chapter = chapter
         self.user_id = str(user_id) if user_id else None
+        print(f"🔐 IngestionService initialized with user_id: {self.user_id} (original type: {type(user_id).__name__})")
         # Configuration from environment variables with defaults
         self.MAX_CHUNK_SIZE = int(os.getenv("MAX_CHUNK_SIZE", "1200"))
         
     def _get_db(self):
         """Internal helper to load the database with persistence."""
-        return Chroma(
-            persist_directory=self.db_directory,
-            embedding_function=self.embedding_model,
-            collection_name="rag_knowledge_base"
-        )
+        try:
+            print(f"🔄 Connecting to ChromaDB at {self.db_directory}...")
+            db = Chroma(
+                persist_directory=self.db_directory,
+                embedding_function=self.embedding_model,
+                collection_name="rag_knowledge_base"
+            )
+            print("✅ ChromaDB connected successfully")
+            return db
+        except Exception as e:
+            print(f"❌ ChromaDB connection failed: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            raise
 
     # ===========================
     # PUBLIC INGESTION API
@@ -377,11 +391,21 @@ class IngestionService:
         
         # Add chunk_id and apply E5 passage prefix for embedding
         chunks_with_ids = []
-        for chunk in unique_chunks:
+        for i, chunk in enumerate(unique_chunks):
             chunk.metadata["chunk_id"] = str(uuid.uuid4())
             # Prefix with "passage: " for E5 embedding model
             if not chunk.page_content.startswith("passage:"):
                 chunk.page_content = f"passage: {chunk.page_content}"
+            
+            # Debug: Show first chunk metadata
+            if i == 0:
+                print(f"📝 Sample chunk metadata:")
+                print(f"   user_id: {chunk.metadata.get('user_id')}")
+                print(f"   subject: {chunk.metadata.get('subject')}")
+                print(f"   chapter: {chunk.metadata.get('chapter')}")
+                print(f"   source: {chunk.metadata.get('source')}")
+                print(f"   chunk_id: {chunk.metadata.get('chunk_id')}")
+            
             chunks_with_ids.append(chunk)
         
         # Add to database

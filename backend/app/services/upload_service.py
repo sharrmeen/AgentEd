@@ -17,7 +17,17 @@ class UploadService:
 
     @staticmethod
     def _normalize(value: str) -> str:
-        return value.strip().replace(" ", "_").lower()
+        """
+        Normalize text for safe filesystem usage.
+        Removes/replaces invalid Windows filename characters: : < > " / \ | ? *
+        """
+        import re
+        # Remove invalid Windows filename characters
+        invalid_chars = r'[:\<\>"/\\|?*]'
+        cleaned = re.sub(invalid_chars, '', value)
+        # Replace spaces with underscores
+        cleaned = cleaned.replace(" ", "_")
+        return cleaned.strip().lower()
 
     @staticmethod
     def _validate_file(file: UploadFile) -> str:

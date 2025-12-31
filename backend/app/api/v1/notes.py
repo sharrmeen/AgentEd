@@ -10,6 +10,7 @@ from typing import Optional
 
 from app.services.notes_service import NotesService
 from app.services.upload_service import UploadService
+from app.services.subject_service import SubjectService
 from app.schemas.notes import (
     NotesResponse,
     NotesUploadResponse,
@@ -55,6 +56,20 @@ async def upload_notes(
         )
     
     try:
+        # Get subject details to get the subject name
+        subject = await SubjectService.get_subject_by_id(
+            user_id=user_id,
+            subject_id=subject_obj_id
+        )
+        
+        if not subject:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Subject not found"
+            )
+        
+        subject_name = subject.subject_name
+        
         # Get file type from content type
         file_type = "image"
         if file.content_type:
@@ -77,7 +92,7 @@ async def upload_notes(
         notes = await NotesService.create_and_ingest_note(
             user_id=user_id,
             subject_id=subject_obj_id,
-            subject=subject_id,
+            subject=subject_name,
             chapter=chapter,
             source_file=file.filename,
             file_path=upload_result["file_path"],
@@ -101,6 +116,9 @@ async def upload_notes(
             detail=str(e)
         )
     except Exception as e:
+        print(f"❌ Notes upload error: {str(e)}")
+        import traceback
+        traceback.print_exc()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to upload notes: {str(e)}"

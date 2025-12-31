@@ -72,22 +72,32 @@ def cache_lookup(user_id: str, session_id: str, question: str, intent: str = "an
 
 
 @tool
-def rag_retriever(user_id: str, question: str, subject: str = None, chapter: str = None) -> str:
-    """Retrieve information from uploaded notes and study materials."""
+def rag_retriever(user_id: str, question: str) -> str:
+    """
+    Retrieve information from uploaded notes and study materials.
+    
+    Note: Automatically searches ALL chapters and subjects for this user.
+    """
     try:
+        print(f"🔧 RAG Retriever called:")
+        print(f"   user_id: {user_id} (type: {type(user_id).__name__})")
+        print(f"   question: {question}")
+        
         retrieval_service = RetrievalService()
         
+        # Search across ALL documents for this user (no subject/chapter filter)
+        # This ensures we find relevant content regardless of where it was uploaded
         results = retrieval_service.query(
             question=question,
             user_id=user_id,
-            subject=subject,
-            chapter=chapter,
+            subject=None,  # Search all subjects
+            chapter=None,  # Search all chapters
             k=5
         )
         
         if not results:
             print(f"❌ RAG: No results found for: {question}")
-            return "No relevant content found in your notes."
+            return "No relevant content found in your notes. You may need to upload study materials first."
         
         print(f"✅ RAG: Found {len(results)} sources for: {question}")
         
@@ -96,18 +106,26 @@ def rag_retriever(user_id: str, question: str, subject: str = None, chapter: str
             content = doc["content"]
             metadata = doc.get("metadata", {})
             
-            print(f"   Source {i}: {metadata.get('source_file', 'Unknown')}")
+            # Extract meaningful source info
+            source_file = metadata.get('source_file', 'Unknown')
+            subject = metadata.get('subject', 'Unknown')
+            chapter = metadata.get('chapter', 'Unknown')
+            confidence = doc.get('confidence', 0)
+            
+            print(f"   Source {i}: {subject} - {chapter} - {source_file} (confidence: {confidence:.2f})")
             
             formatted.append(
-                f"Source {i} (Confidence: {doc.get('confidence', 0):.2f}):\n"
+                f"Source {i} (From {subject}, {chapter} - Confidence: {confidence:.2f}):\n"
                 f"{content}\n"
-                f"[From: {metadata.get('source_file', 'Unknown')}]"
+                f"[File: {source_file}]"
             )
         
         return "\n\n".join(formatted)
     
     except Exception as e:
         print(f"❌ RAG Error: {str(e)}")
+        import traceback
+        traceback.print_exc()
         return f"RAG retrieval error: {str(e)}"
 
 

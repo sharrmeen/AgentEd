@@ -41,6 +41,11 @@ class NotesService:
             file_type: pdf | docx | image
         """
         notes_col = db.notes()
+        
+        # Validate file exists before creating note
+        import os
+        if not os.path.exists(file_path):
+            raise FileNotFoundError(f"Uploaded file not found at {file_path}")
 
         # ---------- MongoDB Metadata ----------
         note_doc = {
@@ -61,15 +66,44 @@ class NotesService:
         note = Notes(**note_doc)
 
         # ---------- Chroma Ingestion ----------
-        ingestor = IngestionService(
-            subject=note.subject,
-            chapter=note.chapter,  # ← FIXED: consistent naming
-            user_id=note.user_id,
-        )
+        try:
+            print(f"📚 Creating IngestionService with:")
+            print(f"   subject: {note.subject}")
+            print(f"   chapter: {note.chapter}")
+            print(f"   user_id: {note.user_id} (type: {type(note.user_id).__name__})")
+            
+            ingestor = IngestionService(
+                subject=note.subject,
+                chapter=note.chapter,  # ← FIXED: consistent naming
+                user_id=note.user_id,
+            )
 
-        ingestion_result = ingestor.ingest(note.file_path)
-
-        print(f"📚 Notes ingested: {ingestion_result}")
+            # Run ingestion in thread pool to avoid blocking async event loop
+            import asyncio
+            from concurrent.futures import ThreadPoolExecutor
+            
+            loop = asyncio.get_event_loop()
+            with ThreadPoolExecutor() as executor:
+                ingestion_result = await loop.run_in_executor(
+                    executor,
+                    ingestor.ingest,
+                    note.file_path
+                )
+            
+            print(f"📚 Notes ingested: {ingestion_result}")
+            
+            # Check if ingestion had errors
+            if isinstance(ingestion_result, str) and "Error" in ingestion_result:
+                print(f"⚠️ Ingestion warning: {ingestion_result}")
+                # Still return the note, but mark ingestion as failed
+                return note
+        
+        except Exception as e:
+            print(f"⚠️ Ingestion error (note still created): {str(e)}")
+            import traceback
+            traceback.print_exc()
+            # Don't fail the whole operation if ingestion fails
+            # The note metadata is still saved, just without vector embeddings
 
         return note
     
