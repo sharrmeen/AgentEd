@@ -31,13 +31,6 @@ interface SubjectsResponse {
   total: number
 }
 
-interface LearningProfile {
-  total_study_hours: number
-  total_quizzes_completed: number
-  streak_days: number
-  subjects: Record<string, { average_score: number }>
-}
-
 // Dashboard stats from real-time endpoint
 interface DashboardStats {
   total_study_hours: number
