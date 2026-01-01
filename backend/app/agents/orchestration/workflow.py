@@ -64,9 +64,12 @@ async def study_plan_node_wrapped(state: AgentEdState) -> dict:
 
 async def resource_agent_node_wrapped(state: AgentEdState) -> dict:
     """Wrapped resource agent with error handling and status tracking."""
+    print("🔥🔥🔥 RESOURCE_AGENT_NODE_WRAPPED CALLED 🔥🔥🔥", flush=True)
     try:
         start_time = time.time()
+        print(f"🔥 About to call resource_agent_node...", flush=True)
         result = await resource_agent_node(state)
+        print(f"🔥 resource_agent_node returned", flush=True)
         execution_time = time.time() - start_time
         
         execution_times = state.get("execution_times", {})
@@ -77,7 +80,9 @@ async def resource_agent_node_wrapped(state: AgentEdState) -> dict:
         return result
     
     except Exception as e:
-        print(f"❌ Resource Agent failed: {e}")
+        print(f"❌ Resource Agent failed: {e}", flush=True)
+        import traceback
+        traceback.print_exc()
         
         errors = state.get("errors", [])
         errors.append(f"Resource Agent: {str(e)}")

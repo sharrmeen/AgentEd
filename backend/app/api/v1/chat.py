@@ -102,6 +102,7 @@ async def send_message(
         )
         
         # Check cache first
+        print(f"🔍 Checking cache for question: {request.question[:50]}...", flush=True)
         cached = await ChatMemoryService.get_cached_answer(
             user_id=user_id,
             session_id=chat.session_id,
@@ -110,6 +111,7 @@ async def send_message(
         )
         
         if cached:
+            print(f"💾 CACHE HIT! Returning cached answer: {cached.answer[:50]}...", flush=True)
             # Touch chat to update last_active
             await ChatService.touch_chat(chat_id=chat_obj_id)
             
@@ -122,6 +124,7 @@ async def send_message(
                 chat_id=str(chat.id)
             )
         
+        print(f"📭 No cache hit - proceeding to generate with LLM...", flush=True)
         # No cache hit - generate with LLM using agent workflow
         try:
             workflow_result = await run_workflow(
@@ -165,18 +168,40 @@ async def send_message(
             
             print(f"✅ Final answer extracted: {answer[:100]}...")
             
-            # Store in chat memory for future cache hits
-            await ChatMemoryService.store_memory(
-                user_id=user_id,
-                subject_id=ObjectId(chat.subject_id),
-                session_id=chat.session_id,
-                chat_id=chat_obj_id,
-                question=request.question,
-                answer=answer,
-                intent_tag=request.intent_tag,
-                source="LLM",
-                confidence_score=0.95
+            # List of error phrases that should NOT be cached
+            ERROR_PHRASES = [
+                "sorry, i couldn't retrieve",
+                "i couldn't find a suitable answer",
+                "please try rephrasing",
+                "something went wrong",
+                "error",
+                "failed to generate",
+                "no response generated"
+            ]
+            
+            # Check if the answer is an error message - don't cache errors!
+            is_error_response = any(
+                phrase in answer.lower() 
+                for phrase in ERROR_PHRASES
             )
+            
+            # Only store in cache if it's a valid answer (not an error)
+            if is_error_response:
+                print(f"⚠️ NOT caching - detected error response: {answer[:50]}...")
+            else:
+                # Store in chat memory for future cache hits
+                await ChatMemoryService.store_memory(
+                    user_id=user_id,
+                    subject_id=ObjectId(chat.subject_id),
+                    session_id=chat.session_id,
+                    chat_id=chat_obj_id,
+                    question=request.question,
+                    answer=answer,
+                    intent_tag=request.intent_tag,
+                    source="LLM",
+                    confidence_score=0.95
+                )
+                print(f"✅ Answer cached successfully")
             
             # Touch chat to update last_active
             await ChatService.touch_chat(chat_id=chat_obj_id)
