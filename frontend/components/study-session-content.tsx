@@ -180,6 +180,13 @@ export function StudySessionContent() {
   }, [params.id, chapterNumber])
 
   useEffect(() => {
+    // Load chat history when chatId is set (session resumed or created)
+    if (chatId) {
+      loadChatHistory()
+    }
+  }, [chatId])
+
+  useEffect(() => {
     // Scroll to bottom when messages change
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
   }, [messages])
@@ -325,6 +332,59 @@ export function StudySessionContent() {
       })
     } finally {
       setIsLoading(false)
+    }
+  }
+
+  const loadChatHistory = async () => {
+    if (!chatId) return
+
+    try {
+      // Interface for the history response
+      interface ChatHistoryMessage {
+        id: string
+        question: string
+        answer: string
+        intent_tag: string
+        source: string
+        confidence_score: number
+        created_at: string
+      }
+
+      interface ChatHistoryResponse {
+        messages: ChatHistoryMessage[]
+        total: number
+        limit: number
+        skip: number
+        has_more: boolean
+      }
+
+      // Endpoint: GET /api/v1/chat/{chat_id}/history
+      const historyResponse = await api.get<ChatHistoryResponse>(
+        `/api/v1/chat/${chatId}/history?limit=100&skip=0`
+      )
+
+      if (historyResponse.messages && historyResponse.messages.length > 0) {
+        // Convert backend messages to frontend Message format
+        const loadedMessages: Message[] = historyResponse.messages.flatMap((msg) => [
+          {
+            role: "user" as const,
+            content: msg.question,
+            timestamp: new Date(msg.created_at),
+          },
+          {
+            role: "assistant" as const,
+            content: msg.answer,
+            timestamp: new Date(msg.created_at),
+            confidence: msg.confidence_score,
+          },
+        ])
+
+        setMessages(loadedMessages)
+        console.log(`✅ Loaded ${loadedMessages.length} messages from chat history`)
+      }
+    } catch (error) {
+      // Silently fail if history is not available - this is OK for new chats
+      console.log("Chat history not available (new chat):", error)
     }
   }
 

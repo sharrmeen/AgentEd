@@ -25,8 +25,7 @@ class ChatMemoryService:
     - UI chat history
     """
 
-    SIMILARITY_THRESHOLD = 0.85
-
+    SIMILARITY_THRESHOLD = 0.95
     @staticmethod
     def _hash_question(question: str) -> str:
         return hashlib.sha256(
