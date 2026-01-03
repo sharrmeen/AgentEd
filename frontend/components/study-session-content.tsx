@@ -686,10 +686,10 @@ export function StudySessionContent() {
         </div>
       )}
 
-      <div className="grid gap-6 lg:grid-cols-3">
+      <div className="grid gap-6 lg:grid-cols-4">
         {/* Main Chat Area */}
-        <div className="lg:col-span-2">
-          <Card className="flex flex-col min-h-[500px] h-[calc(100vh-280px)] max-h-[800px] border-2 border-primary/10">
+        <div className="lg:col-span-3">
+          <Card className="flex flex-col min-h-[800px] h-[calc(100vh-280px)] max-h-[900px] border-2 border-primary/10">
             <CardHeader className="border-b bg-gradient-to-r from-primary/5 to-transparent">
               <div className="flex items-start justify-between">
                 <div>
