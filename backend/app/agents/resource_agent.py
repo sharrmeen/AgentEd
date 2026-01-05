@@ -80,26 +80,27 @@ def cache_lookup(user_id: str, session_id: str, question: str, intent: str = "an
 
 
 # Helper function - NOT a tool (called directly, not by agent)
-def rag_retriever(user_id: str, question: str) -> str:
+def rag_retriever(user_id: str, question: str, subject: str = None) -> str:
     """
     Retrieve information from uploaded notes and study materials.
     
-    Note: Automatically searches ALL chapters and subjects for this user.
+    Filters by subject if provided to ensure context-relevant results.
     """
     try:
         log_print(f"🔧 RAG Retriever called:")
         log_print(f"   user_id: {user_id} (type: {type(user_id).__name__})")
         log_print(f"   question: {question}")
+        log_print(f"   subject: {subject}")
         
         retrieval_service = RetrievalService()
         
-        # Search across ALL documents for this user (no subject/chapter filter)
-        # This ensures we find relevant content regardless of where it was uploaded
+        # Search documents for this user, filtered by subject if provided
+        # If subject is provided, prioritize results from that subject
         results = retrieval_service.query(
             question=question,
             user_id=user_id,
-            subject=None,  # Search all subjects
-            chapter=None,  # Search all chapters
+            subject=subject,  # Filter by subject if provided
+            chapter=None,  # Search all chapters within subject
             k=5
         )
         
@@ -290,10 +291,11 @@ Minimize tool calls - stop as soon as you have enough information."""
         # Skip cache_lookup - use RAG directly
         answer = None
         try:
-            log_print(f"🔧 Step 1: Calling RAG retriever with user_id={user_id}...")
+            log_print(f"🔧 Step 1: Calling RAG retriever with user_id={user_id}, subject={subject_name}...")
             rag_result = rag_retriever(
                 user_id=user_id,
-                question=question
+                question=question,
+                subject=subject_name
             )
             log_print(f"  RAG result length: {len(rag_result) if rag_result else 0}")
             
