@@ -97,7 +97,7 @@ interface Chapter {
 interface Message {
   role: "user" | "assistant"
   content: string
-  timestamp?: Date
+  timestamp?: Date | string // Support both Date objects and ISO strings
   confidence?: number
 }
 
@@ -397,12 +397,12 @@ export function StudySessionContent() {
           {
             role: "user" as const,
             content: msg.question,
-            timestamp: new Date(msg.created_at),
+            timestamp: msg.created_at, // Use ISO string directly from backend
           },
           {
             role: "assistant" as const,
             content: msg.answer,
-            timestamp: new Date(msg.created_at),
+            timestamp: msg.created_at, // Use ISO string directly from backend
             confidence: msg.confidence_score,
           },
         ])
@@ -508,7 +508,7 @@ export function StudySessionContent() {
     const newMessage: Message = { 
       role: "user", 
       content: userMessage,
-      timestamp: new Date()
+      timestamp: new Date().toISOString() // Use ISO string instead of Date object
     }
     setMessages((prev) => [...prev, newMessage])
     setUserMessage("")
@@ -526,7 +526,7 @@ export function StudySessionContent() {
       setMessages((prev) => [...prev, { 
         role: "assistant", 
         content: response.answer,
-        timestamp: new Date(),
+        timestamp: new Date().toISOString(), // Use ISO string instead of Date object
         confidence: response.confidence_score || undefined
       }])
     } catch (error) {
