@@ -108,67 +108,107 @@ class StudySessionService:
         chapter_title = chapter_info.get("chapter_title", f"Chapter {chapter_number}")
         
         # -----------------------------
-        # 5️⃣ Check Existing Session
+        # 5️⃣ Create or Update Session (Atomically)
+        # Using upsert to handle concurrent requests
+        # This prevents E11000 duplicate key errors
         # -----------------------------
-        existing = await sessions_col.find_one({
+        filter_query = {
             "user_id": user_id,
             "subject_id": subject_id,
             "chapter_number": chapter_number
-        })
-        
-        if existing:
-            return StudySession(**existing)
-        
-        # -----------------------------
-        # 6️⃣ Create Study Session
-        # -----------------------------
-        session_doc = {
-            "user_id": user_id,
-            "subject_id": subject_id,
-            "chapter_number": chapter_number,
-            "chapter_title": chapter_title,
-            "notes_uploaded": False,
-            "status": "active",
-            "created_at": datetime.utcnow(),
-            "last_active": datetime.utcnow(),
         }
         
-        session_result = await sessions_col.insert_one(session_doc)
-        session_id = session_result.inserted_id
+        # Check if session already exists
+        existing_session = await sessions_col.find_one(filter_query)
         
-        # -----------------------------
-        # 7️⃣ Create Chat Container
-        # -----------------------------
-        chat_doc = {
-            "user_id": user_id,
-            "session_id": session_id,
-            "subject_id": subject_id,
-            "chapter_number": chapter_number,
-            "chapter_title": chapter_title,
-            "created_at": datetime.utcnow()
-        }
+        if existing_session:
+            # Session exists - just return it
+            session_id = existing_session["_id"]
+        else:
+            # Create new session
+            session_doc = {
+                "user_id": user_id,
+                "subject_id": subject_id,
+                "chapter_number": chapter_number,
+                "chapter_title": chapter_title,
+                "notes_uploaded": False,
+                "status": "active",
+                "created_at": datetime.utcnow(),
+                "last_active": datetime.utcnow(),
+            }
+            
+            try:
+                session_result = await sessions_col.insert_one(session_doc)
+                session_id = session_result.inserted_id
+            except Exception as e:
+                # Handle race condition - another request created it
+                if "duplicate" in str(e).lower():
+                    existing_session = await sessions_col.find_one(filter_query)
+                    if existing_session:
+                        session_id = existing_session["_id"]
+                    else:
+                        raise
+                else:
+                    raise
         
-        chat_result = await chats_col.insert_one(chat_doc)
-        chat_id = chat_result.inserted_id
+        # If session doesn't have a chat yet, create one
+        session_record = await sessions_col.find_one({"_id": session_id})
         
-        # Link chat to session
-        await sessions_col.update_one(
-            {"_id": session_id},
-            {"$set": {"chat_id": chat_id}}
-        )
+        print(f"📋 Session record after creation: {session_record}", flush=True)
+        print(f"   Has chat_id: {bool(session_record.get('chat_id'))}", flush=True)
         
-        # -----------------------------
-        # 8️⃣ Update Subject Status
-        # -----------------------------
+        if not session_record.get("chat_id"):
+            print(f"🔍 Checking for existing chat with session_id: {session_id}", flush=True)
+            # Check if chat already exists for this session
+            existing_chat = await chats_col.find_one({"session_id": session_id})
+            
+            if existing_chat:
+                # Use existing chat
+                chat_id = existing_chat["_id"]
+                print(f"   ♻️ Reusing existing chat: {chat_id}", flush=True)
+            else:
+                # Create new Chat Container
+                chat_doc = {
+                    "user_id": user_id,
+                    "session_id": session_id,
+                    "subject_id": subject_id,
+                    "chapter_number": chapter_number,
+                    "chapter_title": chapter_title,
+                    "created_at": datetime.utcnow()
+                }
+                
+                print(f"📝 Creating new chat with doc: {chat_doc}", flush=True)
+                try:
+                    chat_result = await chats_col.insert_one(chat_doc)
+                    chat_id = chat_result.inserted_id
+                    print(f"✅ Created chat: {chat_id}", flush=True)
+                except Exception as e:
+                    print(f"❌ Error creating chat: {e}", flush=True)
+                    raise
+            
+            # Link chat to session (whether new or existing)
+            try:
+                update_result = await sessions_col.update_one(
+                    {"_id": session_id},
+                    {"$set": {"chat_id": chat_id}}
+                )
+                print(f"   ✅ Updated session with chat_id: {chat_id} ({update_result.modified_count} documents modified)", flush=True)
+            except Exception as e:
+                print(f"❌ Error updating session with chat_id: {e}", flush=True)
+                raise
+        
+        # Fetch final session record (with all fields including chat_id)
+        final_session = await sessions_col.find_one({"_id": session_id})
+        print(f"📋 Final session: {final_session}", flush=True)
+        print(f"   Final chat_id: {final_session.get('chat_id')}", flush=True)
+        
+        # Update Subject Status
         await SubjectService.mark_in_progress(
             user_id=user_id,
             subject_id=subject_id
         )
         
-        session_doc["_id"] = session_id
-        session_doc["chat_id"] = chat_id
-        
-        return StudySession(**session_doc)
+        return StudySession(**final_session)
     
     # ============================
     # GET SESSION

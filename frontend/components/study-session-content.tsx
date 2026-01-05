@@ -161,6 +161,12 @@ export function StudySessionContent() {
   const chapterNumber = searchParams.get("chapter")
   const messagesEndRef = useRef<HTMLDivElement>(null)
   
+  // Chat history pagination state
+  const [isLoadingMoreMessages, setIsLoadingMoreMessages] = useState(false)
+  const [hasMoreMessages, setHasMoreMessages] = useState(false)
+  const [totalMessages, setTotalMessages] = useState(0)
+  const [loadedMessageCount, setLoadedMessageCount] = useState(0)
+  
   // Notes upload state
   const [showUploadDialog, setShowUploadDialog] = useState(false)
   const [hasNotes, setHasNotes] = useState(false)
@@ -195,6 +201,7 @@ export function StudySessionContent() {
     try {
       setIsLoading(true)
       const chapterNum = Number(chapterNumber)
+      console.log(`🚀 Initializing session for subject: ${params.id}, chapter: ${chapterNum}`)
 
       // Fetch subject to get chapter details from the plan
       // Endpoint: GET /api/v1/subjects/{id}
@@ -263,8 +270,10 @@ export function StudySessionContent() {
           chapter_number: chapterNum,
         })
 
+        console.log("📝 Session created:", sessionData)
         setSessionId(sessionData.id)
         setChatId(sessionData.chat_id)
+        console.log(`✅ Chat ID set to: ${sessionData.chat_id}`)
       } catch (error) {
         // If creation fails, try to get existing session
         const errorMessage = error instanceof Error ? error.message : String(error)
@@ -325,6 +334,7 @@ export function StudySessionContent() {
         console.log("No progress data found for chapter:", progressError)
       }
     } catch (error) {
+      console.error("❌ Error loading chapter:", error)
       toast({
         title: "Error loading chapter",
         description: error instanceof Error ? error.message : "Failed to load chapter",
@@ -336,7 +346,12 @@ export function StudySessionContent() {
   }
 
   const loadChatHistory = async () => {
-    if (!chatId) return
+    if (!chatId) {
+      console.warn("⚠️ loadChatHistory: chatId not set yet")
+      return
+    }
+
+    console.log(`📥 Loading chat history for chat_id: ${chatId}`)
 
     try {
       // Interface for the history response
@@ -351,6 +366,11 @@ export function StudySessionContent() {
       }
 
       interface ChatHistoryResponse {
+        chat_id: string
+        session_id: string
+        subject_id: string
+        chapter_number: number
+        chapter_title: string
         messages: ChatHistoryMessage[]
         total: number
         limit: number
@@ -359,9 +379,18 @@ export function StudySessionContent() {
       }
 
       // Endpoint: GET /api/v1/chat/{chat_id}/history
-      const historyResponse = await api.get<ChatHistoryResponse>(
-        `/api/v1/chat/${chatId}/history?limit=100&skip=0`
-      )
+      // Load only 2-3 most recent messages initially (faster UI response)
+      const INITIAL_LOAD_LIMIT = 6 // 3 user-assistant pairs
+      const url = `/api/v1/chat/${chatId}/history?limit=${INITIAL_LOAD_LIMIT}&skip=0`
+      console.log(`🔗 Requesting: ${url}`)
+      
+      const historyResponse = await api.get<ChatHistoryResponse>(url)
+      
+      console.log(`✅ History response received:`, historyResponse)
+
+      setTotalMessages(historyResponse.total)
+      setLoadedMessageCount(INITIAL_LOAD_LIMIT)
+      setHasMoreMessages(historyResponse.has_more)
 
       if (historyResponse.messages && historyResponse.messages.length > 0) {
         // Convert backend messages to frontend Message format
@@ -380,16 +409,102 @@ export function StudySessionContent() {
         ])
 
         setMessages(loadedMessages)
-        console.log(`✅ Loaded ${loadedMessages.length} messages from chat history`)
+        console.log(`✅ Loaded ${loadedMessages.length} recent messages. Total: ${historyResponse.total}`)
+
+        // Start loading more messages in the background (non-blocking)
+        if (historyResponse.has_more) {
+          loadMoreMessagesBackground(INITIAL_LOAD_LIMIT)
+        }
+      } else {
+        console.log(`ℹ️ No messages in history (new chat)`)
+        setMessages([])
       }
     } catch (error) {
-      // Silently fail if history is not available - this is OK for new chats
-      console.log("Chat history not available (new chat):", error)
+      // Log the actual error instead of silently failing
+      console.error("❌ Error loading chat history:", error)
+      if (error instanceof Error) {
+        console.error("Error message:", error.message)
+        console.error("Error stack:", error.stack)
+      }
+      setMessages([])
+    }
+  }
+
+  const loadMoreMessagesBackground = async (skip: number) => {
+    if (!chatId || isLoadingMoreMessages) return
+
+    setIsLoadingMoreMessages(true)
+    try {
+      interface ChatHistoryMessage {
+        id: string
+        question: string
+        answer: string
+        intent_tag: string
+        source: string
+        confidence_score: number
+        created_at: string
+      }
+
+      interface ChatHistoryResponse {
+        messages: ChatHistoryMessage[]
+        total: number
+        limit: number
+        skip: number
+        has_more: boolean
+      }
+
+      const BACKGROUND_LOAD_LIMIT = 20 // Load more in background
+      const historyResponse = await api.get<ChatHistoryResponse>(
+        `/api/v1/chat/${chatId}/history?limit=${BACKGROUND_LOAD_LIMIT}&skip=${skip}`
+      )
+
+      if (historyResponse.messages && historyResponse.messages.length > 0) {
+        const moreMessages: Message[] = historyResponse.messages.flatMap((msg) => [
+          {
+            role: "user" as const,
+            content: msg.question,
+            timestamp: new Date(msg.created_at),
+          },
+          {
+            role: "assistant" as const,
+            content: msg.answer,
+            timestamp: new Date(msg.created_at),
+            confidence: msg.confidence_score,
+          },
+        ])
+
+        // Prepend the older messages to the current messages
+        setMessages((prev) => [...moreMessages, ...prev])
+        setLoadedMessageCount((prev) => prev + moreMessages.length)
+
+        // Continue loading if there are more
+        if (historyResponse.has_more) {
+          setHasMoreMessages(true)
+          // Schedule next background load
+          setTimeout(() => {
+            loadMoreMessagesBackground(skip + BACKGROUND_LOAD_LIMIT)
+          }, 500) // Small delay to avoid overwhelming the API
+        } else {
+          setHasMoreMessages(false)
+        }
+
+        console.log(`✅ Loaded ${moreMessages.length} more messages. Total loaded: ${skip + moreMessages.length}`)
+      }
+    } catch (error) {
+      console.log("Error loading more chat history:", error)
+      setIsLoadingMoreMessages(false)
+    } finally {
+      setIsLoadingMoreMessages(false)
     }
   }
 
   const sendMessage = async () => {
-    if (!userMessage.trim() || !chatId) return
+    if (!userMessage.trim() || !chatId) {
+      console.warn("⚠️ sendMessage: Missing userMessage or chatId", { userMessage: !!userMessage.trim(), chatId })
+      return
+    }
+
+    console.log(`💬 Sending message to chat ${chatId}: "${userMessage.substring(0, 50)}..."`)
 
     const newMessage: Message = { 
       role: "user", 
@@ -407,6 +522,8 @@ export function StudySessionContent() {
         intent_tag: selectedIntent,
       })
 
+      console.log(`✅ Got response from agent:`, response)
+
       setMessages((prev) => [...prev, { 
         role: "assistant", 
         content: response.answer,
@@ -414,6 +531,7 @@ export function StudySessionContent() {
         confidence: response.confidence_score || undefined
       }])
     } catch (error) {
+      console.error(`❌ Error sending message:`, error)
       toast({
         title: "Error sending message",
         description: error instanceof Error ? error.message : "Failed to send message",
@@ -848,6 +966,18 @@ export function StudySessionContent() {
                   </div>
                 )}
               </ScrollArea>
+
+              {/* Loading more messages in background */}
+              {hasMoreMessages && (
+                <div className="text-center text-xs text-muted-foreground mb-2 flex items-center justify-center gap-2">
+                  <div className="flex gap-1">
+                    <div className="h-1 w-1 rounded-full bg-muted-foreground animate-bounce" />
+                    <div className="h-1 w-1 rounded-full bg-muted-foreground animate-bounce delay-100" />
+                    <div className="h-1 w-1 rounded-full bg-muted-foreground animate-bounce delay-200" />
+                  </div>
+                  <span>Loading earlier messages... ({loadedMessageCount}/{totalMessages})</span>
+                </div>
+              )}
 
               {/* Message Input Area */}
               <div className="flex-shrink-0 space-y-2 border-t pt-3">
