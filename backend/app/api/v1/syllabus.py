@@ -9,6 +9,8 @@ from bson import ObjectId
 
 from app.services.syllabus_service import SyllabusService
 from app.services.upload_service import UploadService
+from app.services.ingestion import IngestionService
+from app.services.subject_service import SubjectService
 from app.schemas.syllabus import (
     SyllabusResponse,
     SyllabusUploadResponse,
@@ -63,6 +65,24 @@ async def upload_syllabus(
             file_path=upload_result["file_path"],
             file_type=upload_result["file_type"]
         )
+        
+        # Index syllabus content into ChromaDB for RAG
+        try:
+            subject_service = await SubjectService.get_subject_by_id(
+                user_id=user_id,
+                subject_id=subject_obj_id
+            )
+            subject_name = subject_service.subject_name if subject_service else "Unknown"
+            
+            ingestion = IngestionService(
+                subject=subject_name,
+                user_id=user_id
+            )
+            ingest_result = ingestion.ingest(upload_result["file_path"])
+            print(f"✅ Syllabus indexed into ChromaDB: {ingest_result}")
+        except Exception as e:
+            print(f"⚠️ Warning: Failed to index syllabus into ChromaDB: {str(e)}")
+            # Don't fail the upload if indexing fails - user can still use the syllabus
         
         # Get text preview (first 500 chars)
         text_preview = syllabus.raw_text[:500] if syllabus.raw_text else ""
