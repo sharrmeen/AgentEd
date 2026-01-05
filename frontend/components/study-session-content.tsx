@@ -152,7 +152,6 @@ export function StudySessionContent() {
   const [userMessage, setUserMessage] = useState("")
   const [isSending, setIsSending] = useState(false)
   const [isObjectivesOpen, setIsObjectivesOpen] = useState(true)
-  const [isContentOpen, setIsContentOpen] = useState(true)
   const [sessionId, setSessionId] = useState<string | null>(null)
   const [chatId, setChatId] = useState<string | null>(null)
   const [completedObjectives, setCompletedObjectives] = useState<Set<string>>(new Set())
@@ -1105,31 +1104,6 @@ export function StudySessionContent() {
                         No learning objectives available
                       </p>
                     )}
-                  </div>
-                </CollapsibleContent>
-              </Collapsible>
-            </CardContent>
-          </Card>
-
-          {/* Content Card */}
-          <Card className="border-primary/10">
-            <CardContent className="p-0">
-              <Collapsible open={isContentOpen} onOpenChange={setIsContentOpen}>
-                <CollapsibleTrigger className="w-full">
-                  <div className="flex items-center justify-between p-4 hover:bg-muted/50 transition-colors border-b">
-                    <span className="font-semibold text-sm">Content</span>
-                    <ChevronDown 
-                      className={`h-4 w-4 transition-transform duration-200 ${
-                        isContentOpen ? "rotate-180" : ""
-                      }`} 
-                    />
-                  </div>
-                </CollapsibleTrigger>
-                <CollapsibleContent>
-                  <div className="p-4 max-h-64 overflow-y-auto">
-                    <p className="text-sm text-muted-foreground">
-                      {chapter.content || "Chapter content will be displayed here. Ask questions to explore this chapter."}
-                    </p>
                   </div>
                 </CollapsibleContent>
               </Collapsible>
