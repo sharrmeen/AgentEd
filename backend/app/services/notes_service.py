@@ -144,6 +144,30 @@ class NotesService:
         return [Notes(**doc) for doc in docs]
     
     @staticmethod
+    async def list_user_all_notes(
+        *,
+        user_id: ObjectId
+    ) -> list[Notes]:
+        """
+        List ALL notes for a user across all subjects.
+        
+        Args:
+            user_id: Owner ID
+            
+        Returns:
+            List of all Notes for user
+        """
+        notes_col = db.notes()
+        
+        query = {
+            "user_id": user_id
+        }
+        
+        cursor = notes_col.find(query).sort("created_at", -1)
+        docs = await cursor.to_list(None)
+        return [Notes(**doc) for doc in docs]
+    
+    @staticmethod
     async def get_note_by_id(
         *,
         user_id: ObjectId,

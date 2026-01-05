@@ -10,7 +10,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { GraduationCap, User, BarChart3, Settings, LogOut, Moon, Sun } from "lucide-react"
+import { GraduationCap, User, BarChart3, Settings, LogOut, Moon, Sun, FileText } from "lucide-react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useEffect, useState } from "react"
@@ -79,6 +79,10 @@ export function Navbar() {
               <DropdownMenuItem onClick={() => router.push("/profile")}>
                 <User className="mr-2 h-4 w-4" />
                 Profile
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => router.push("/notes")}>
+                <FileText className="mr-2 h-4 w-4" />
+                My Study Materials
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => router.push("/analytics")}>
                 <BarChart3 className="mr-2 h-4 w-4" />

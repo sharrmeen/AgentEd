@@ -22,6 +22,47 @@ from app.api.deps import get_user_id
 router = APIRouter()
 
 
+@router.get("/user/all", response_model=NotesListResponse)
+async def list_all_user_notes(
+    user_id: ObjectId = Depends(get_user_id)
+):
+    """
+    List ALL notes uploaded by the current user across all subjects.
+    
+    Returns:
+        List of all notes for the user
+    """
+    try:
+        notes = await NotesService.list_user_all_notes(
+            user_id=user_id
+        )
+        
+        note_responses = [
+            NotesResponse(
+                id=str(n.id),
+                subject_id=str(n.subject_id),
+                subject=n.subject,
+                chapter=n.chapter,
+                source_file=n.source_file,
+                file_path=n.file_path,
+                file_type=n.file_type,
+                created_at=n.created_at,
+                updated_at=n.updated_at
+            )
+            for n in notes
+        ]
+        
+        return NotesListResponse(
+            notes=note_responses,
+            total=len(note_responses)
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e)
+        )
+
+
 @router.post("/{subject_id}/upload", response_model=NotesUploadResponse, status_code=status.HTTP_201_CREATED)
 async def upload_notes(
     subject_id: str,

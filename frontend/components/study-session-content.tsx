@@ -152,6 +152,7 @@ export function StudySessionContent() {
   const [userMessage, setUserMessage] = useState("")
   const [isSending, setIsSending] = useState(false)
   const [isObjectivesOpen, setIsObjectivesOpen] = useState(true)
+  const [isNotesOpen, setIsNotesOpen] = useState(true)
   const [sessionId, setSessionId] = useState<string | null>(null)
   const [chatId, setChatId] = useState<string | null>(null)
   const [completedObjectives, setCompletedObjectives] = useState<Set<string>>(new Set())
@@ -1110,6 +1111,64 @@ export function StudySessionContent() {
             </CardContent>
           </Card>
 
+          {/* Study Materials/Notes Card */}
+          <Card className="border-primary/10">
+            <CardContent className="p-0">
+              <Collapsible open={isNotesOpen} onOpenChange={setIsNotesOpen}>
+                <CollapsibleTrigger className="w-full">
+                  <div className="flex items-center justify-between p-4 hover:bg-muted/50 transition-colors border-b">
+                    <div className="flex items-center gap-2">
+                      <FileText className="h-4 w-4 text-primary" />
+                      <span className="font-semibold text-sm">Study Materials</span>
+                      {chapterNotes.length > 0 && (
+                        <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full dark:bg-green-900/30 dark:text-green-400">
+                          {chapterNotes.length} file{chapterNotes.length !== 1 ? 's' : ''}
+                        </span>
+                      )}
+                    </div>
+                    <ChevronDown 
+                      className={`h-4 w-4 transition-transform duration-200 ${
+                        isNotesOpen ? "rotate-180" : ""
+                      }`} 
+                    />
+                  </div>
+                </CollapsibleTrigger>
+                <CollapsibleContent>
+                  <div className="p-4 space-y-3">
+                    {chapterNotes.length > 0 ? (
+                      <ul className="space-y-2">
+                        {chapterNotes.map((note) => (
+                          <li 
+                            key={note.id} 
+                            className="flex items-start gap-2 p-2 rounded-md bg-muted/50 hover:bg-muted transition-colors"
+                          >
+                            <FileText className="h-4 w-4 text-primary flex-shrink-0 mt-0.5" />
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-medium truncate">{note.source_file}</p>
+                              <p className="text-xs text-muted-foreground">{note.file_type.toUpperCase()}</p>
+                            </div>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="text-xs text-muted-foreground text-center py-4">
+                        No study materials for this chapter
+                      </p>
+                    )}
+                    <Button 
+                      variant="outline"
+                      className="w-full gap-2 text-xs"
+                      onClick={() => setShowUploadDialog(true)}
+                    >
+                      <Upload className="h-3 w-3" />
+                      {chapterNotes.length > 0 ? "Upload More" : "Upload Notes"}
+                    </Button>
+                  </div>
+                </CollapsibleContent>
+              </Collapsible>
+            </CardContent>
+          </Card>
+
           {/* Action Card */}
           <Card className="bg-gradient-to-br from-primary/5 to-transparent border-primary/20">
             <CardContent className="p-4 space-y-3">
@@ -1120,41 +1179,6 @@ export function StudySessionContent() {
               >
                 <ClipboardCheck className="h-4 w-4" />
                 Take Quiz
-              </Button>
-            </CardContent>
-          </Card>
-
-          {/* Upload Notes Card */}
-          <Card className="border-primary/10">
-            <CardContent className="p-4 space-y-3">
-              <div className="flex items-center justify-between">
-                <p className="text-sm font-medium">Study Materials</p>
-                {hasNotes && (
-                  <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full dark:bg-green-900/30 dark:text-green-400">
-                    {chapterNotes.length} file{chapterNotes.length !== 1 ? 's' : ''}
-                  </span>
-                )}
-              </div>
-              {chapterNotes.length > 0 && (
-                <div className="space-y-1">
-                  {chapterNotes.slice(0, 2).map((note) => (
-                    <div key={note.id} className="flex items-center gap-2 text-xs text-muted-foreground">
-                      <FileText className="h-3 w-3" />
-                      <span className="truncate">{note.source_file}</span>
-                    </div>
-                  ))}
-                  {chapterNotes.length > 2 && (
-                    <p className="text-xs text-muted-foreground">+{chapterNotes.length - 2} more</p>
-                  )}
-                </div>
-              )}
-              <Button 
-                variant="outline"
-                className="w-full gap-2"
-                onClick={() => setShowUploadDialog(true)}
-              >
-                <Upload className="h-4 w-4" />
-                {hasNotes ? "Upload More Notes" : "Upload Notes"}
               </Button>
             </CardContent>
           </Card>
