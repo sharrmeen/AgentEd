@@ -44,12 +44,12 @@ async def test_planner_agent():
         assert isinstance(result["messages"], list), "messages should be a list"
         assert len(result["messages"]) > 0, "messages list is empty"
         
-        print("✅ PLANNER AGENT PASSED")
+        print("PLANNER AGENT PASSED")
         print(f"   Response: {result['messages'][0][:150]}...")
         return True
         
     except Exception as e:
-        print(f"❌ PLANNER AGENT FAILED: {str(e)}")
+        print(f"PLANNER AGENT FAILED: {str(e)}")
         import traceback
         traceback.print_exc()
         return False
@@ -81,12 +81,12 @@ async def test_resource_agent():
         assert isinstance(result["messages"], list), "messages should be a list"
         assert len(result["messages"]) > 0, "messages list is empty"
         
-        print("✅ RESOURCE AGENT PASSED")
+        print("RESOURCE AGENT PASSED")
         print(f"   Response: {result['messages'][0][:150]}...")
         return True
         
     except Exception as e:
-        print(f"❌ RESOURCE AGENT FAILED: {str(e)}")
+        print(f"RESOURCE AGENT FAILED: {str(e)}")
         import traceback
         traceback.print_exc()
         return False

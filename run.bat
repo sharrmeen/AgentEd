@@ -4,18 +4,18 @@ REM AgentEd - Start Project (Backend + Frontend)
 REM ============================================
 
 echo.
-echo 🚀 Starting AgentEd...
+echo Starting AgentEd...
 echo.
 
 REM Check if setup was done
 if not exist "backend\venv" (
-    echo ❌ Backend not set up. Run setup.bat first!
+    echo Backend not set up. Run setup.bat first!
     pause
     exit /b 1
 )
 
 if not exist "frontend\node_modules" (
-    echo ❌ Frontend not set up. Run setup.bat first!
+    echo Frontend not set up. Run setup.bat first!
     pause
     exit /b 1
 )
@@ -23,7 +23,7 @@ if not exist "frontend\node_modules" (
 REM Check if MongoDB is running
 tasklist /FI "IMAGENAME eq mongod.exe" 2>nul | find /I /N "mongod.exe" >nul
 if errorlevel 1 (
-    echo ⚠️  WARNING: MongoDB is not running!
+    echo WARNING: MongoDB is not running!
     echo Please start MongoDB in another terminal:
     echo   mongod
     echo Or use MongoDB Atlas in your .env file
@@ -33,14 +33,14 @@ if errorlevel 1 (
 
 REM Check .env file
 if not exist "backend\.env" (
-    echo ❌ ERROR: backend\.env not found
+    echo ERROR: backend\.env not found
     echo Please create it first (copy from setup instructions)
     pause
     exit /b 1
 )
 
 echo ============================================
-echo 📌 IMPORTANT: API Keys Required
+echo IMPORTANT: API Keys Required
 echo ============================================
 echo.
 echo Before starting, make sure you've set these in backend\.env:
@@ -78,11 +78,11 @@ if errorlevel 1 (
 )
 
 echo.
-echo ✅ Services Starting...
+echo Services Starting...
 echo.
-echo 🌐 Frontend: http://localhost:3000
-echo 📚 Backend API: http://localhost:8000
-echo 📖 API Docs: http://localhost:8000/api/docs
+echo Frontend: http://localhost:3000
+echo Backend API: http://localhost:8000
+echo API Docs: http://localhost:8000/api/docs
 echo.
 echo Close this window or press Ctrl+C to stop.
 echo.

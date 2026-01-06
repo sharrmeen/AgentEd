@@ -32,4 +32,4 @@ for file in files:
     with open(file, "w") as f:
         pass
 
-print("✅ AgentEd project structure created successfully!")
+print("AgentEd project structure created successfully!")

@@ -47,7 +47,7 @@ def log_print(msg: str):
 # LLM INITIALIZATION
 # ============================
 _api_key = os.getenv("GEMINI_API_KEY")
-log_print(f"🔑 Gemini API key loaded: {'YES' if _api_key else 'NO'} (length: {len(_api_key) if _api_key else 0})")
+log_print(f"Gemini API key loaded: {'YES' if _api_key else 'NO'} (length: {len(_api_key) if _api_key else 0})")
 
 llm = ChatGoogleGenerativeAI(
     model="gemini-2.5-flash-lite",
@@ -199,7 +199,7 @@ resource_tools = [cache_lookup, rag_retriever]
 if TAVILY_AVAILABLE:
     resource_tools.append(web_search)
 
-log_print("✅ resource_agent module loaded successfully")
+log_print("resource_agent module loaded successfully")
 
 # ============================
 # AGENT NODE

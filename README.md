@@ -1,4 +1,4 @@
-#  AgentEd - AI-Powered Study Companion
+# AgentEd - AI-Powered Study Companion
 
 An intelligent, multi-agent learning platform that provides personalized study assistance, curriculum planning, quiz generation, and performance feedback using advanced AI and RAG (Retrieval-Augmented Generation).
 
@@ -25,7 +25,7 @@ An intelligent, multi-agent learning platform that provides personalized study a
   - Tavily Search API key (optional, for web search)
 - **RAM**: Minimum 8GB (16GB recommended for optimal performance)
 
-## 🚀 Quick Start
+## Quick Start
 
 ### 1. Clone & Setup
 
@@ -135,7 +135,7 @@ mongod
 
 ChromaDB will auto-initialize in `./chroma_db` directory.
 
-## 📁 Project Structure
+## Project Structure
 
 ```
 AgentEd/
@@ -171,7 +171,7 @@ AgentEd/
 └── README.md                  # This file
 ```
 
-## 🔑 API Endpoints
+## API Endpoints
 
 ### Authentication
 - `POST /api/v1/auth/register` - User registration
@@ -198,7 +198,7 @@ AgentEd/
 
 Full API documentation available at `http://localhost:8000/api/docs` when backend is running.
 
-## 🛠️ Development
+## Development
 
 ### Running Tests
 
@@ -223,7 +223,7 @@ cd frontend
 pnpm lint
 ```
 
-## 🔧 Troubleshooting
+## Troubleshooting
 
 ### MongoDB Connection Error
 ```
@@ -263,7 +263,7 @@ pip cache purge
 pip install -r requirements.txt --no-cache-dir
 ```
 
-## 📊 System Architecture
+## System Architecture
 
 ```
 ┌─────────────────────────────────────────────────────┐
@@ -292,7 +292,7 @@ pip install -r requirements.txt --no-cache-dir
      └──────────┘          └──────────────┘
 ```
 
-## 🚢 Deployment
+## Deployment
 
 ### Environment Variables for Production
 ```env
@@ -307,15 +307,15 @@ MONGODB_URI=mongodb+srv://...  # MongoDB Atlas
 docker-compose up
 ```
 
-## 📝 License
+## License
 
 Built for hackathon - 2025
 
-## 🤝 Contributing
+## Contributing
 
 This is a hackathon submission. All contributions welcome!
 
-## ❓ Support
+## Support
 
 For issues and questions:
 1. Check the troubleshooting section above
@@ -325,4 +325,4 @@ For issues and questions:
 
 ---
 
-**Ready to learn?** Start the backend and frontend, then navigate to `http://localhost:3000`! 🚀
+**Ready to learn?** Start the backend and frontend, then navigate to `http://localhost:3000`!

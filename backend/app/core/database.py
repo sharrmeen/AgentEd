@@ -42,7 +42,7 @@ class Database:
             )
             self.db = self.client[DB_NAME]
             await self.client.admin.command("ping")
-            print("✅ Connected to MongoDB")
+            print("Connected to MongoDB")
         except Exception as e:
             print(f"❌ MongoDB connection failed: {e}")
             raise
@@ -276,7 +276,7 @@ async def init_indexes():
         name="quiz_results_recent"
     )
 
-    print("✅ MongoDB indexes initialized successfully")
+    print("MongoDB indexes initialized successfully")
 
 
 # ========================

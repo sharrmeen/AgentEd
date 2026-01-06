@@ -56,30 +56,30 @@ async def lifespan(app: FastAPI):
     - Initialize indexes
     - Cleanup on shutdown
     """
-    logger.info("🚀 Starting AgentEd Backend...")
+    logger.info("Starting AgentEd Backend...")
     
     try:
         # Connect to MongoDB
         await db.connect()
-        logger.info("✅ MongoDB connected")
+        logger.info("MongoDB connected")
         
         # Initialize indexes
         await db.init_indexes()
-        logger.info("✅ Indexes initialized")
+        logger.info("Indexes initialized")
         
     except Exception as e:
-        logger.error(f"❌ Startup failed: {str(e)}")
+        logger.error(f"Startup failed: {str(e)}")
         raise
     
     yield
     
     # Cleanup
-    logger.info("🛑 Shutting down AgentEd Backend...")
+    logger.info("Shutting down AgentEd Backend...")
     try:
         await db.close()
-        logger.info("✅ MongoDB disconnected")
+        logger.info("MongoDB disconnected")
     except Exception as e:
-        logger.error(f"❌ Shutdown error: {str(e)}")
+        logger.error(f"Shutdown error: {str(e)}")
 
 # ============================
 # CREATE FASTAPI APP
@@ -161,6 +161,6 @@ async def global_exception_handler(request, exc):
 
 @app.on_event("startup")
 async def startup_message():
-    logger.info(f"🎓 AgentEd Backend v{settings.APP_VERSION} is running")
-    logger.info(f"📖 Docs available at http://localhost:8000/api/docs")
-    logger.info(f"🔗 API endpoints: /api/v1 (user-facing chat, notes, quiz, etc.)")
+    logger.info(f"AgentEd Backend v{settings.APP_VERSION} is running")
+    logger.info(f"Docs available at http://localhost:8000/api/docs")
+    logger.info(f"API endpoints: /api/v1 (user-facing chat, notes, quiz, etc.)")

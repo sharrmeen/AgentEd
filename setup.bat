@@ -4,28 +4,28 @@ REM AgentEd - Quick Setup Script for Windows
 REM ============================================
 
 echo.
-echo 🚀 Welcome to AgentEd Setup!
+echo Welcome to AgentEd Setup!
 echo.
 
 REM Check if Python is installed
 python --version >nul 2>&1
 if errorlevel 1 (
-    echo ❌ ERROR: Python is not installed or not in PATH
+    echo ERROR: Python is not installed or not in PATH
     echo Please install Python 3.10+ from https://www.python.org/
     pause
     exit /b 1
 )
 
-echo ✅ Python found
+echo Python found
 python --version
 
 REM Check if Node.js is installed
 node --version >nul 2>&1
 if errorlevel 1 (
-    echo ⚠️  WARNING: Node.js not found. You'll need it to run the frontend.
+    echo WARNING: Node.js not found. You'll need it to run the frontend.
     echo Install from https://nodejs.org/
 ) else (
-    echo ✅ Node.js found
+    echo Node.js found
     node --version
 )
 
@@ -35,18 +35,18 @@ echo.
 echo Checking MongoDB...
 tasklist /FI "IMAGENAME eq mongod.exe" 2>nul | find /I /N "mongod.exe" >nul
 if errorlevel 1 (
-    echo ⚠️  MongoDB is not running locally
+    echo WARNING: MongoDB is not running locally
     echo You can:
     echo   1. Start MongoDB: mongod
     echo   2. Use MongoDB Atlas cloud: https://www.mongodb.com/cloud/atlas
 ) else (
-    echo ✅ MongoDB is running
+    echo MongoDB is running
 )
 
 REM Setup Backend
 echo.
 echo ============================================
-echo 📦 Setting up Backend...
+echo Setting up Backend...
 echo ============================================
 cd backend
 
@@ -55,36 +55,36 @@ if not exist "venv" (
     echo Creating virtual environment...
     python -m venv venv
     if errorlevel 1 (
-        echo ❌ Failed to create virtual environment
+        echo Failed to create virtual environment
         pause
         exit /b 1
     )
-    echo ✅ Virtual environment created
+    echo Virtual environment created
 ) else (
-    echo ✅ Virtual environment already exists
+    echo Virtual environment already exists
 )
 
 REM Activate venv
 call venv\Scripts\activate.bat
 if errorlevel 1 (
-    echo ❌ Failed to activate virtual environment
+    echo Failed to activate virtual environment
     pause
     exit /b 1
 )
 
-echo ✅ Virtual environment activated
+echo Virtual environment activated
 
 REM Install dependencies
 echo.
 echo Installing Python dependencies (this may take 2-3 minutes)...
 pip install -r requirements.txt
 if errorlevel 1 (
-    echo ❌ Failed to install Python dependencies
+    echo Failed to install Python dependencies
     pause
     exit /b 1
 )
 
-echo ✅ Backend dependencies installed
+echo Backend dependencies installed
 
 REM Setup Frontend
 cd ..\frontend
@@ -93,7 +93,7 @@ REM Check if node_modules exists
 if not exist "node_modules" (
     echo.
     echo ============================================
-    echo 📦 Setting up Frontend...
+    echo Setting up Frontend...
     echo ============================================
     echo Installing Node dependencies (this may take 1-2 minutes)...
     
@@ -108,13 +108,13 @@ if not exist "node_modules" (
     )
     
     if errorlevel 1 (
-        echo ❌ Failed to install Node dependencies
+        echo Failed to install Node dependencies
         pause
         exit /b 1
     )
-    echo ✅ Frontend dependencies installed
+    echo Frontend dependencies installed
 ) else (
-    echo ✅ Frontend dependencies already exist
+    echo Frontend dependencies already exist
 )
 
 cd ..
@@ -127,10 +127,10 @@ if not exist "chroma_db" mkdir chroma_db
 
 echo.
 echo ============================================
-echo ✅ Setup Complete!
+echo Setup Complete!
 echo ============================================
 echo.
-echo 📋 Next Steps:
+echo Next Steps:
 echo.
 echo 1. Configure API Keys:
 echo    - Edit: backend\.env
@@ -147,6 +147,6 @@ echo    OR
 echo    - Terminal 1: cd backend && venv\Scripts\activate && python main.py
 echo    - Terminal 2: cd frontend && npm run dev (or pnpm dev)
 echo.
-echo 🎓 Then open: http://localhost:3000
+echo Then open: http://localhost:3000
 echo.
 pause
