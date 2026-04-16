@@ -70,6 +70,29 @@ interface ClassListResponse {
   }>
 }
 
+interface SyllabusResponse {
+  id: string
+  subject_id: string
+  raw_text: string
+  source_file: string
+  file_type: string
+  created_at: string
+  updated_at: string
+}
+
+interface TeacherNoteItem {
+  id: string
+  chapter: string
+  source_file: string
+  file_type: string
+  created_at: string
+}
+
+interface TeacherNotesResponse {
+  notes: TeacherNoteItem[]
+  total: number
+}
+
 // Frontend display types
 interface Subject {
   id: string
@@ -108,6 +131,11 @@ export default function SubjectDetailPage() {
   const [teacherChapter, setTeacherChapter] = useState("")
   const [teacherNotesFile, setTeacherNotesFile] = useState<File | null>(null)
   const [teacherClasses, setTeacherClasses] = useState<Array<{ id: string; name: string; section?: string | null }>>([])
+  const [teacherNotes, setTeacherNotes] = useState<TeacherNoteItem[]>([])
+  const [isLoadingTeacherNotes, setIsLoadingTeacherNotes] = useState(false)
+  const [isLoadingSyllabus, setIsLoadingSyllabus] = useState(false)
+  const [isSyllabusDialogOpen, setIsSyllabusDialogOpen] = useState(false)
+  const [syllabusPreview, setSyllabusPreview] = useState("")
   const [difficultyModalOpen, setDifficultyModalOpen] = useState(false)
   const [selectedDifficulty, setSelectedDifficulty] = useState<SubjectDifficulty>("intermediate")
   const [activeTab, setActiveTab] = useState<"overview" | "study-plan">("overview")
@@ -131,7 +159,8 @@ export default function SubjectDetailPage() {
   useEffect(() => {
     if (!isTeacher) return
     fetchTeacherClasses()
-  }, [isTeacher])
+    fetchTeacherNotes()
+  }, [isTeacher, subjectId])
 
   const fetchTeacherClasses = async () => {
     try {
@@ -142,6 +171,18 @@ export default function SubjectDetailPage() {
       }
     } catch {
       // Class list is optional for subject viewing.
+    }
+  }
+
+  const fetchTeacherNotes = async () => {
+    try {
+      setIsLoadingTeacherNotes(true)
+      const response = await api.get<TeacherNotesResponse>(`/api/v1/notes/${subjectId}`)
+      setTeacherNotes(response.notes || [])
+    } catch {
+      setTeacherNotes([])
+    } finally {
+      setIsLoadingTeacherNotes(false)
     }
   }
 
@@ -281,6 +322,7 @@ export default function SubjectDetailPage() {
       })
       setTeacherNotesFile(null)
       setTeacherChapter("")
+      await fetchTeacherNotes()
       toast({
         title: "Notes uploaded",
         description: "Notes were stored and queued for vector ingestion.",
@@ -293,6 +335,23 @@ export default function SubjectDetailPage() {
       })
     } finally {
       setIsNotesUploading(false)
+    }
+  }
+
+  const handleViewSyllabus = async () => {
+    try {
+      setIsLoadingSyllabus(true)
+      const response = await api.get<SyllabusResponse>(`/api/v1/syllabus/${subjectId}`)
+      setSyllabusPreview(response.raw_text || "")
+      setIsSyllabusDialogOpen(true)
+    } catch (error) {
+      toast({
+        title: "Unable to load syllabus",
+        description: error instanceof Error ? error.message : "Failed to fetch syllabus",
+        variant: "destructive",
+      })
+    } finally {
+      setIsLoadingSyllabus(false)
     }
   }
 
@@ -371,9 +430,21 @@ export default function SubjectDetailPage() {
                   </CardHeader>
                   <CardContent>
                     {subject.syllabus_uploaded ? (
-                      <div className="flex items-center gap-2 text-accent">
-                        <CheckCircle2 className="h-5 w-5" />
-                        <span className="font-medium">Syllabus uploaded</span>
+                      <div className="space-y-3">
+                        <div className="flex items-center gap-2 text-accent">
+                          <CheckCircle2 className="h-5 w-5" />
+                          <span className="font-medium">Syllabus uploaded</span>
+                        </div>
+                        {isTeacher && (
+                          <Button
+                            variant="outline"
+                            className="w-full bg-transparent"
+                            onClick={handleViewSyllabus}
+                            disabled={isLoadingSyllabus}
+                          >
+                            {isLoadingSyllabus ? <LoadingSpinner size="sm" /> : "View Syllabus"}
+                          </Button>
+                        )}
                       </div>
                     ) : !isTeacher ? (
                       <p className="text-sm text-muted-foreground">Your teacher will upload the syllabus for this subject.</p>
@@ -467,6 +538,29 @@ export default function SubjectDetailPage() {
                         {!teacherClasses.length && (
                           <p className="text-xs text-muted-foreground">Assign at least one class to upload teacher notes.</p>
                         )}
+                        <div className="space-y-2 border-t pt-3">
+                          <p className="text-sm font-medium">Uploaded Notes</p>
+                          {isLoadingTeacherNotes ? (
+                            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                              <LoadingSpinner size="sm" />
+                              Loading notes...
+                            </div>
+                          ) : teacherNotes.length === 0 ? (
+                            <p className="text-xs text-muted-foreground">No notes uploaded for this subject yet.</p>
+                          ) : (
+                            <div className="space-y-1">
+                              {teacherNotes.slice(0, 5).map((note) => (
+                                <div key={note.id} className="rounded-md border p-2 text-xs">
+                                  <p className="font-medium">{note.source_file}</p>
+                                  <p className="text-muted-foreground">{note.chapter}</p>
+                                </div>
+                              ))}
+                              {teacherNotes.length > 5 && (
+                                <p className="text-xs text-muted-foreground">+{teacherNotes.length - 5} more files</p>
+                              )}
+                            </div>
+                          )}
+                        </div>
                       </div>
                     ) : subject.study_plan_generated ? (
                       <div className="space-y-3">
@@ -499,27 +593,29 @@ export default function SubjectDetailPage() {
                   </CardContent>
                 </Card>
 
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <BookOpen className="h-5 w-5" />
-                      Quizzes
-                    </CardTitle>
-                    <CardDescription>Test your knowledge</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-3">
-                      <p className="text-sm text-muted-foreground">Create and practice quizzes based on the material</p>
-                      <Button
-                        className="w-full gap-2"
-                        onClick={() => router.push(`/subjects/${subjectId}/quizzes`)}
-                      >
-                        <BookOpen className="h-4 w-4" />
-                        {isTeacher ? "Take Quiz" : "Go to Quizzes"}
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
+                {!isTeacher && (
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2">
+                        <BookOpen className="h-5 w-5" />
+                        Quizzes
+                      </CardTitle>
+                      <CardDescription>Test your knowledge</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="space-y-3">
+                        <p className="text-sm text-muted-foreground">Create and practice quizzes based on the material</p>
+                        <Button
+                          className="w-full gap-2"
+                          onClick={() => router.push(`/subjects/${subjectId}/quizzes`)}
+                        >
+                          <BookOpen className="h-4 w-4" />
+                          Go to Quizzes
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
               </div>
 
               {subject.study_plan_generated && (
@@ -669,6 +765,21 @@ export default function SubjectDetailPage() {
 
               <DialogFooter>
                 <Button onClick={handleSaveDifficulty}>Save Preference</Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+
+          <Dialog open={isSyllabusDialogOpen} onOpenChange={setIsSyllabusDialogOpen}>
+            <DialogContent className="max-h-[80vh] overflow-hidden">
+              <DialogHeader>
+                <DialogTitle>Syllabus Preview</DialogTitle>
+                <DialogDescription>Extracted syllabus text for this subject.</DialogDescription>
+              </DialogHeader>
+              <div className="max-h-[55vh] overflow-y-auto rounded-md border p-3">
+                <pre className="whitespace-pre-wrap text-sm">{syllabusPreview || "No syllabus content available."}</pre>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setIsSyllabusDialogOpen(false)}>Close</Button>
               </DialogFooter>
             </DialogContent>
           </Dialog>

@@ -7,7 +7,7 @@ import { Navbar } from "@/components/navbar"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { LoadingSpinner } from "@/components/loading-spinner"
 import { api } from "@/lib/api"
-import { BookOpen, ClipboardList, Plus, Users } from "lucide-react"
+import { BookOpen, ClipboardList, Plus, Users, ArrowRight } from "lucide-react"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -268,13 +268,21 @@ export default function TeacherPage() {
                   ) : (
                     <div className="space-y-2">
                       {subjects.map((subject) => (
-                        <div key={subject.id} className="flex items-center justify-between rounded-md border p-3">
+                        <button
+                          key={subject.id}
+                          type="button"
+                          onClick={() => router.push(`/subjects/${subject.id}`)}
+                          className="flex w-full items-center justify-between rounded-md border p-3 text-left transition-colors hover:bg-muted/50"
+                        >
                           <div className="flex items-center gap-2">
                             <BookOpen className="h-4 w-4 text-primary" />
                             <span>{subject.subject_name}</span>
                           </div>
-                          <ClipboardList className="h-4 w-4 text-muted-foreground" />
-                        </div>
+                          <div className="flex items-center gap-2 text-muted-foreground">
+                            <ClipboardList className="h-4 w-4" />
+                            <ArrowRight className="h-4 w-4" />
+                          </div>
+                        </button>
                       ))}
                     </div>
                   )}

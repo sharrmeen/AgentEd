@@ -80,8 +80,6 @@ class RetrievalService:
 
         if subject:
             filter_clauses.append({"subject": {"$eq": subject}})
-        if chapter:
-            filter_clauses.append({"chapter": {"$eq": chapter}})
         if teacher_id:
             filter_clauses.append({"teacher_id": {"$eq": str(teacher_id)}})
         if subject_id:
@@ -98,7 +96,6 @@ class RetrievalService:
         print(f"   Question: {question}")
         print(f"   User ID: {user_id_str}")
         print(f"   Subject filter: {subject}")
-        print(f"   Chapter filter: {chapter}")
         print(f"   Filter: {filter_dict}")
 
         # ---------------------------
@@ -126,7 +123,7 @@ class RetrievalService:
             print(
                 "     Metadata: "
                 f"subject={metadata.get('subject')}, "
-                f"chapter={metadata.get('chapter')}, "
+
                 f"user_id={metadata.get('user_id')}, "
                 f"class_id={metadata.get('class_id')}"
             )
