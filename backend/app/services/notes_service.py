@@ -12,7 +12,7 @@ class NotesService:
     """
     NotesService:
     - Persists notes metadata in MongoDB
-    - Triggers ingestion into ChromaDB
+    - Triggers ingestion into vector store
     - Guarantees metadata consistency between MongoDB and Vector DB
     """
 
@@ -21,15 +21,21 @@ class NotesService:
         *,
         user_id: ObjectId,
         subject_id: ObjectId,
+        class_id: str | None,
+        teacher_id: ObjectId | None,
+        role: str,
         subject: str,  # Display name
         chapter: str,  # ← FIXED: Was "module"
         source_file: str,
         file_path: str,
+        storage_type: str = "s3",
+        object_key: str | None = None,
+        object_url: str | None = None,
         file_type: str,
     ) -> Notes:
         """
         1. Store notes metadata in MongoDB
-        2. Ingest note into Chroma with correct metadata
+        2. Ingest note into vector store with correct metadata
         
         Args:
             user_id: Owner
@@ -51,10 +57,16 @@ class NotesService:
         note_doc = {
             "user_id": user_id,
             "subject_id": subject_id,  # ← ADDED
+            "class_id": class_id,
+            "teacher_id": teacher_id,
+            "role": role,
             "subject": subject,
             "chapter": chapter,  # ← FIXED
             "source_file": source_file,
             "file_path": file_path,
+            "storage_type": storage_type,
+            "object_key": object_key,
+            "object_url": object_url,
             "file_type": file_type,
             "created_at": datetime.utcnow(),
             "updated_at": datetime.utcnow(),
@@ -76,6 +88,10 @@ class NotesService:
                 subject=note.subject,
                 chapter=note.chapter,  # ← FIXED: consistent naming
                 user_id=note.user_id,
+                class_id=note.class_id,
+                teacher_id=note.teacher_id,
+                subject_id=note.subject_id,
+                role=note.role,
             )
 
             # Run ingestion in thread pool to avoid blocking async event loop
@@ -89,7 +105,7 @@ class NotesService:
                     ingestor.ingest,
                     note.file_path
                 )
-            
+
             print(f"📚 Notes ingested: {ingestion_result}")
             
             # Check if ingestion had errors
@@ -104,6 +120,15 @@ class NotesService:
             traceback.print_exc()
             # Don't fail the whole operation if ingestion fails
             # The note metadata is still saved, just without vector embeddings
+        finally:
+            # For cloud storage flows we only use a temporary local staging file.
+            if storage_type == "s3" and file_path:
+                import os
+                try:
+                    if os.path.exists(file_path):
+                        os.remove(file_path)
+                except OSError:
+                    pass
 
         return note
     
@@ -114,7 +139,9 @@ class NotesService:
     @staticmethod
     async def list_subject_notes(
         *,
-        user_id: ObjectId,
+        requester_id: ObjectId,
+        requester_role: str,
+        requester_class_id: str | None,
         subject_id: ObjectId,
         chapter: str = None
     ) -> list[Notes]:
@@ -122,7 +149,9 @@ class NotesService:
         List all notes for a subject, optionally filtered by chapter.
         
         Args:
-            user_id: Owner ID
+            requester_id: Logged-in user ID
+            requester_role: Logged-in role
+            requester_class_id: Class assignment for student filtering
             subject_id: Subject FK
             chapter: Optional chapter filter
             
@@ -131,10 +160,17 @@ class NotesService:
         """
         notes_col = db.notes()
         
-        query = {
-            "user_id": user_id,
-            "subject_id": subject_id
-        }
+        query = {"subject_id": subject_id}
+
+        if requester_role == "admin":
+            pass
+        elif requester_role == "teacher":
+            query["teacher_id"] = requester_id
+        else:
+            # Students can only view notes assigned to their class.
+            if not requester_class_id:
+                return []
+            query["class_id"] = requester_class_id
         
         if chapter:
             query["chapter"] = chapter
@@ -146,22 +182,29 @@ class NotesService:
     @staticmethod
     async def list_user_all_notes(
         *,
-        user_id: ObjectId
+        requester_id: ObjectId,
+        requester_role: str,
+        requester_class_id: str | None,
     ) -> list[Notes]:
         """
         List ALL notes for a user across all subjects.
         
         Args:
-            user_id: Owner ID
+            requester_id: Logged-in user ID
             
         Returns:
             List of all Notes for user
         """
         notes_col = db.notes()
         
-        query = {
-            "user_id": user_id
-        }
+        if requester_role == "admin":
+            query = {}
+        elif requester_role == "teacher":
+            query = {"teacher_id": requester_id}
+        else:
+            if not requester_class_id:
+                return []
+            query = {"class_id": requester_class_id}
         
         cursor = notes_col.find(query).sort("created_at", -1)
         docs = await cursor.to_list(None)
@@ -170,14 +213,16 @@ class NotesService:
     @staticmethod
     async def get_note_by_id(
         *,
-        user_id: ObjectId,
+        requester_id: ObjectId,
+        requester_role: str,
+        requester_class_id: str | None,
         note_id: ObjectId
     ) -> Notes | None:
         """
         Get a single note by ID.
         
         Args:
-            user_id: Owner ID
+            requester_id: Logged-in user ID
             note_id: Note ID
             
         Returns:
@@ -185,10 +230,17 @@ class NotesService:
         """
         notes_col = db.notes()
         
-        doc = await notes_col.find_one({
-            "_id": note_id,
-            "user_id": user_id
-        })
+        query = {"_id": note_id}
+        if requester_role == "admin":
+            pass
+        elif requester_role == "teacher":
+            query["teacher_id"] = requester_id
+        else:
+            if not requester_class_id:
+                return None
+            query["class_id"] = requester_class_id
+
+        doc = await notes_col.find_one(query)
         
         if not doc:
             return None
@@ -242,7 +294,8 @@ class NotesService:
     @staticmethod
     async def delete_note(
         *,
-        user_id: ObjectId,
+        requester_id: ObjectId,
+        requester_role: str,
         note_id: ObjectId
     ) -> bool:
         """
@@ -256,9 +309,10 @@ class NotesService:
         """
         notes_col = db.notes()
         
-        result = await notes_col.delete_one({
-            "_id": note_id,
-            "user_id": user_id
-        })
+        query = {"_id": note_id}
+        if requester_role != "admin":
+            query["teacher_id"] = requester_id
+
+        result = await notes_col.delete_one(query)
         
         return result.deleted_count > 0

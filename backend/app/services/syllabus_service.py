@@ -31,6 +31,7 @@ class SyllabusService:
         subject_id: ObjectId,
         file_path: str,
         file_type: str,
+        source_file: Optional[str] = None,
     ) -> Syllabus:
         """
         Upload syllabus for existing subject.
@@ -48,6 +49,7 @@ class SyllabusService:
             subject_id: Parent subject (must exist)
             file_path: Path to uploaded file
             file_type: "pdf" | "docx" | "image"
+            source_file: Original uploaded filename
             
         Returns:
             Syllabus document
@@ -103,7 +105,7 @@ class SyllabusService:
             "user_id": user_id,
             "subject_id": subject_id,
             "raw_text": raw_text,
-            "source_file": os.path.basename(file_path),
+            "source_file": source_file or os.path.basename(file_path),
             "file_type": file_type,
             "created_at": datetime.utcnow(),
             "updated_at": datetime.utcnow(),

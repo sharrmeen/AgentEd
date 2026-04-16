@@ -1,71 +1,42 @@
 import os
 os.environ["CUDA_VISIBLE_DEVICES"] = ""
 
-
-
-"""
-AgentEd Backend - Main FastAPI Application.
-
-Architecture:
-- Agent-Based: LangGraph orchestration for intelligent workflows
-- Intent-Driven: Single resource agent with dynamic prompts
-- Multi-Modal: Supports explain, summarize, and answer intents
-
-API Routes:
-- /api/v1/* → User-facing endpoints (chat, notes, quiz, planner, feedback)
-
-Agents:
-- Resource Agent: Knowledge retrieval with intent-based prompts
-- Study Plan Agent: Curriculum design
-- Quiz Agent: Assessment generation
-- Feedback Agent: Performance analysis
-
-Storage:
-- MongoDB: Structured data, chat memory, cache
-- ChromaDB: Vector embeddings for RAG
-"""
-
 from contextlib import asynccontextmanager
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
+from fastapi.responses import JSONResponse
 import logging
 
 from app.core.config import settings
 from app.core.database import db
 from app.api import api_router
 from app.schemas.common import HealthResponse
+from app.services.user_service import UserService
 
-# Load environment variables
 load_dotenv()
 
-# Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# ============================
-# LIFESPAN - App Startup/Shutdown
-# ============================
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """
-    Manage app lifecycle:
-    - Connect to databases on startup
-    - Initialize indexes
-    - Cleanup on shutdown
-    """
     logger.info("Starting AgentEd Backend...")
     
     try:
-        # Connect to MongoDB
         await db.connect()
         logger.info("MongoDB connected")
         
-        # Initialize indexes
         await db.init_indexes()
         logger.info("Indexes initialized")
+
+        await UserService.ensure_default_admin()
+        logger.info("Default admin account ensured")
+
+        logger.info(f"AgentEd Backend v{settings.APP_VERSION} is running")
+        logger.info("Docs available at /api/docs")
+        logger.info("API endpoints: /api/v1 (user-facing chat, notes, quiz, etc.)")
         
     except Exception as e:
         logger.error(f"Startup failed: {str(e)}")
@@ -73,17 +44,12 @@ async def lifespan(app: FastAPI):
     
     yield
     
-    # Cleanup
     logger.info("Shutting down AgentEd Backend...")
     try:
         await db.close()
         logger.info("MongoDB disconnected")
     except Exception as e:
         logger.error(f"Shutdown error: {str(e)}")
-
-# ============================
-# CREATE FASTAPI APP
-# ============================
 
 app = FastAPI(
     title=settings.APP_NAME,
@@ -95,11 +61,6 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# ============================
-# MIDDLEWARE
-# ============================
-
-# CORS - Allow frontend to connect
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.CORS_ORIGINS,
@@ -109,58 +70,31 @@ app.add_middleware(
     expose_headers=["content-length", "content-range"]
 )
 
-# Trusted Host
 app.add_middleware(
     TrustedHostMiddleware,
-    allowed_hosts=["localhost", "127.0.0.1", "*.example.com"]
+    allowed_hosts=settings.ALLOWED_HOSTS or ["*"]
 )
 
-# ============================
-# ROUTES
-# ============================
-
-# Health check endpoint
 @app.get("/health", response_model=HealthResponse, tags=["health"])
 async def health_check():
-    """
-    Health check endpoint.
-    
-    Returns:
-        Status and connection info
-    """
     return HealthResponse(
         status="healthy",
         version=settings.APP_VERSION,
         database="connected"
     )
 
-# Include versioned API routers
 app.include_router(
     api_router,
     prefix="/api"
 )
 
-# ============================
-# ERROR HANDLING
-# ============================
-
 @app.exception_handler(Exception)
 async def global_exception_handler(request, exc):
-    """Handle unexpected exceptions."""
     logger.error(f"Unhandled exception: {str(exc)}", exc_info=exc)
     
-    return {
+    return JSONResponse(status_code=500, content={
         "success": False,
         "message": "Internal server error",
         "detail": str(exc) if settings.DEBUG else "An error occurred"
-    }
+    })
 
-# ============================
-# STARTUP MESSAGE
-# ============================
-
-@app.on_event("startup")
-async def startup_message():
-    logger.info(f"AgentEd Backend v{settings.APP_VERSION} is running")
-    logger.info(f"Docs available at http://localhost:8000/api/docs")
-    logger.info(f"API endpoints: /api/v1 (user-facing chat, notes, quiz, etc.)")

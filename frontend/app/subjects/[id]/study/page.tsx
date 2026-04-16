@@ -6,7 +6,7 @@ import { StudySessionContent } from "@/components/study-session-content"
 
 export default function StudyPage() {
   return (
-    <AuthGuard>
+    <AuthGuard allowedRoles={["student", "teacher"]}>
       <div className="min-h-screen bg-background">
         <Navbar />
         <StudySessionContent />

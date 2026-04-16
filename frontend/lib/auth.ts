@@ -1,7 +1,11 @@
 export interface User {
   id: string
   name: string
-  email: string
+  username: string
+  email?: string | null
+  role: "admin" | "teacher" | "student"
+  class_id?: string | null
+  must_change_password?: boolean
 }
 
 // Backend returns flat response, not nested user object
@@ -10,8 +14,11 @@ export interface TokenResponse {
   token_type: string
   expires_in: number
   user_id: string
-  email: string
+  username: string
   name: string
+  role: "admin" | "teacher" | "student"
+  class_id?: string | null
+  must_change_password: boolean
 }
 
 export const auth = {
@@ -53,8 +60,19 @@ export const auth = {
     this.setUser({
       id: response.user_id,
       name: response.name,
-      email: response.email,
+      username: response.username,
+      role: response.role,
+      class_id: response.class_id,
+      must_change_password: response.must_change_password,
     })
+  },
+
+  getDefaultRoute(user?: User | null): string {
+    const currentUser = user ?? this.getUser()
+    if (!currentUser) return "/login"
+    if (currentUser.role === "admin") return "/admin"
+    if (currentUser.role === "teacher") return "/teacher"
+    return "/dashboard"
   },
 
   logout() {

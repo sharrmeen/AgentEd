@@ -6,7 +6,6 @@ Application configuration using Pydantic Settings.
 Loads environment variables from .env file.
 """
 
-import os
 from typing import Optional, List
 from pydantic_settings import BaseSettings
 from functools import lru_cache
@@ -21,6 +20,7 @@ class Settings(BaseSettings):
     APP_NAME: str = "AgentEd"
     APP_VERSION: str = "1.0.0"
     DEBUG: bool = False
+    APP_URL_BASE: str = "https://app.agented.example"
     
     # ============================
     # API
@@ -31,13 +31,19 @@ class Settings(BaseSettings):
     # ============================
     # CORS
     # ============================
-    CORS_ORIGINS: List[str] = ["http://localhost:3000", "http://localhost:5173", "*"]
+    CORS_ORIGINS: List[str] = []
+    ALLOWED_HOSTS: List[str] = []
     
     # ============================
     # MONGODB
     # ============================
-    MONGODB_URI: str = "mongodb://localhost:27017"
+    MONGODB_URI: str
     DB_NAME: str = "agented_db"
+
+    # ============================
+    # MULTI-TENANT / RBAC
+    # ============================
+    ENABLE_CLASS_BASED_ACCESS: bool = True
     
     # ============================
     # JWT AUTHENTICATION
@@ -45,6 +51,9 @@ class Settings(BaseSettings):
     JWT_SECRET_KEY: str = "your-super-secret-key-change-in-production"
     JWT_ALGORITHM: str = "HS256"
     JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7  # 7 days
+
+    DEFAULT_ADMIN_USERNAME: str = "admin"
+    DEFAULT_ADMIN_PASSWORD: str = "admin"
     
     # ============================
     # API KEYS (set these in .env)
@@ -54,18 +63,31 @@ class Settings(BaseSettings):
     GEMINI_MODEL: str = "gemini-2.5-flash-lite"
 
     # ============================
-    # CHROMADB
+    # VECTOR DATABASE
     # ============================
-    CHROMA_PERSIST_DIRECTORY: str = "backend/chroma_db"
+    VECTOR_DB_PROVIDER: str = "pinecone"
     MAX_CHUNK_SIZE: int = 1200
+
+    # Pinecone configuration
+    PINECONE_API_KEY: Optional[str] = None
+    PINECONE_INDEX: Optional[str] = None
+    PINECONE_NAMESPACE: str = "default"
 
     # ============================
     # FILE UPLOADS
     # ============================
-    UPLOAD_DIR: str = "backend/data/users"
+    STORAGE_PROVIDER: str = "s3"
     MAX_UPLOAD_SIZE: int = 10 * 1024 * 1024  # 10 MB
     ALLOWED_EXTENSIONS: List[str] = ["pdf", "docx", "png", "jpg", "jpeg"]
-    # (Removed CHROMA_DB_DIRECTORY: use CHROMA_PERSIST_DIRECTORY only)
+
+    # S3-compatible object storage (Backblaze B2, R2, MinIO, etc.)
+    S3_KEY: Optional[str] = None
+    S3_SECRET: Optional[str] = None
+    S3_BUCKET: Optional[str] = None
+    S3_ENDPOINT: Optional[str] = None
+    S3_REGION: Optional[str] = None
+    S3_FORCE_PATH_STYLE: bool = True
+    S3_PRESIGNED_URL_EXPIRE_SECONDS: int = 900
     
     # ============================
     # EMAIL / SMTP

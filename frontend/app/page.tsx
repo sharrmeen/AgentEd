@@ -10,7 +10,7 @@ export default function HomePage() {
 
   useEffect(() => {
     if (auth.isAuthenticated()) {
-      router.push("/dashboard")
+      router.push(auth.getDefaultRoute())
     } else {
       router.push("/login")
     }

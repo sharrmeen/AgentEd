@@ -16,7 +16,7 @@ from app.schemas.syllabus import (
     SyllabusUploadResponse,
     SyllabusDeleteResponse
 )
-from app.api.deps import get_user_id
+from app.api.deps import get_current_user
 
 router = APIRouter()
 
@@ -24,8 +24,9 @@ router = APIRouter()
 @router.post("/{subject_id}/upload", response_model=SyllabusUploadResponse, status_code=status.HTTP_201_CREATED)
 async def upload_syllabus(
     subject_id: str,
+    class_id: str | None = None,
     file: UploadFile = File(...),
-    user_id: ObjectId = Depends(get_user_id)
+    current_user: dict = Depends(get_current_user)
 ):
     """
     Upload a syllabus file for a subject.
@@ -50,23 +51,53 @@ async def upload_syllabus(
             detail="Invalid subject ID format"
         )
     
+    temp_file_path: str | None = None
+    upload_result: dict = {}
+
     try:
+        user_id = ObjectId(current_user["id"])
+        role = current_user.get("role", "student")
+        requester_class_id = current_user.get("class_id")
+
+        if role == "student":
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Students are not allowed to upload syllabus",
+            )
+
+        effective_class_id = class_id or requester_class_id
+
+        subject = await SubjectService.get_subject_by_id(
+            user_id=user_id,
+            subject_id=subject_obj_id
+        )
+
+        if not subject:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Subject not found"
+            )
+
         # Upload file
         upload_result = await UploadService.upload_syllabus(
             user_id=user_id,
-            subject=subject_id,
-            file=file
+            subject=subject.subject_name,
+            file=file,
+            class_id=effective_class_id,
+            teacher_id=str(user_id),
         )
+        temp_file_path = upload_result.get("file_path")
         
         # Create syllabus document
         syllabus = await SyllabusService.create_syllabus(
             user_id=user_id,
             subject_id=subject_obj_id,
             file_path=upload_result["file_path"],
-            file_type=upload_result["file_type"]
+            file_type=upload_result["file_type"],
+            source_file=upload_result.get("source_file") or file.filename,
         )
         
-        # Index syllabus content into ChromaDB for RAG
+        # Index syllabus content into vector store for RAG
         try:
             subject_service = await SubjectService.get_subject_by_id(
                 user_id=user_id,
@@ -76,12 +107,16 @@ async def upload_syllabus(
             
             ingestion = IngestionService(
                 subject=subject_name,
-                user_id=user_id
+                user_id=user_id,
+                class_id=effective_class_id,
+                teacher_id=user_id,
+                subject_id=subject_obj_id,
+                role=role,
             )
             ingest_result = ingestion.ingest(upload_result["file_path"])
-            print(f"✅ Syllabus indexed into ChromaDB: {ingest_result}")
+            print(f"✅ Syllabus indexed into vector store: {ingest_result}")
         except Exception as e:
-            print(f"⚠️ Warning: Failed to index syllabus into ChromaDB: {str(e)}")
+            print(f"⚠️ Warning: Failed to index syllabus into vector store: {str(e)}")
             # Don't fail the upload if indexing fails - user can still use the syllabus
         
         # Get text preview (first 500 chars)
@@ -111,12 +146,20 @@ async def upload_syllabus(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to process syllabus: {str(e)}"
         )
+    finally:
+        if upload_result.get("storage_type") == "s3" and temp_file_path:
+            import os
+            try:
+                if os.path.exists(temp_file_path):
+                    os.remove(temp_file_path)
+            except OSError:
+                pass
 
 
 @router.get("/{subject_id}", response_model=SyllabusResponse)
 async def get_syllabus(
     subject_id: str,
-    user_id: ObjectId = Depends(get_user_id)
+    current_user: dict = Depends(get_current_user)
 ):
     """
     Get syllabus for a subject.
@@ -136,6 +179,7 @@ async def get_syllabus(
         )
     
     try:
+        user_id = ObjectId(current_user["id"])
         syllabus = await SyllabusService.get_by_subject_id(
             user_id=user_id,
             subject_id=subject_obj_id
@@ -166,7 +210,7 @@ async def get_syllabus(
 @router.delete("/{subject_id}", response_model=SyllabusDeleteResponse)
 async def delete_syllabus(
     subject_id: str,
-    user_id: ObjectId = Depends(get_user_id)
+    current_user: dict = Depends(get_current_user)
 ):
     """
     Delete syllabus for a subject.
@@ -186,10 +230,20 @@ async def delete_syllabus(
         )
     
     try:
-        await SyllabusService.delete_syllabus(
+        user_id = ObjectId(current_user["id"])
+        syllabus = await SyllabusService.get_by_subject_id(
             user_id=user_id,
-            subject_id=subject_obj_id
+            subject_id=subject_obj_id,
         )
+        if not syllabus:
+            raise ValueError("Syllabus not found for this subject")
+
+        deleted = await SyllabusService.delete_syllabus(
+            user_id=user_id,
+            syllabus_id=ObjectId(syllabus.id),
+        )
+        if not deleted:
+            raise ValueError("Failed to delete syllabus")
         
         return SyllabusDeleteResponse(syllabus_id=subject_id)
     except ValueError as e:

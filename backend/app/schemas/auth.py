@@ -6,28 +6,33 @@ Authentication schemas for user registration, login, and profile.
 
 from datetime import datetime
 from typing import Optional, Dict, List
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, Field
 
 
 # ============================
 # REQUEST SCHEMAS
 # ============================
 
-class UserRegisterRequest(BaseModel):
-    """User registration request."""
+class AdminCreateUserRequest(BaseModel):
+    """Admin request to create a new user account."""
     name: str = Field(..., min_length=2, max_length=100, description="User's full name")
-    email: EmailStr = Field(..., description="User's email address")
+    username: str = Field(..., min_length=2, max_length=100, description="Username (GR number or employee ID)")
+    email: Optional[str] = Field(None, description="Optional email address")
+    role: str = Field(..., description="Role: student or teacher")
+    class_id: Optional[str] = Field(None, description="Class ID for students")
     password: str = Field(..., min_length=6, description="Password (min 6 characters)")
+    must_change_password: bool = Field(True, description="Force password change on first login")
 
 
 class UserLoginRequest(BaseModel):
     """User login request."""
-    email: EmailStr = Field(..., description="User's email address")
+    username: str = Field(..., description="Username (GR number or employee ID)")
     password: str = Field(..., description="User's password")
 
 
 class PasswordChangeRequest(BaseModel):
     """Password change request."""
+    email: Optional[str] = Field(None, description="Required on first login")
     current_password: str
     new_password: str = Field(..., min_length=6)
 
@@ -35,8 +40,14 @@ class PasswordChangeRequest(BaseModel):
 class ProfileUpdateRequest(BaseModel):
     """Profile update request."""
     name: Optional[str] = None
+    email: Optional[str] = None
     learning_style: Optional[str] = None
     difficulty_preference: Optional[str] = None
+
+
+class ClassAssignmentRequest(BaseModel):
+    """Assign or clear a student's class."""
+    class_id: Optional[str] = None
 
 
 # ============================
@@ -49,8 +60,11 @@ class TokenResponse(BaseModel):
     token_type: str = "bearer"
     expires_in: int
     user_id: str
-    email: str
+    username: str
     name: str
+    role: str
+    class_id: Optional[str] = None
+    must_change_password: bool = False
 
 
 class SubjectProfileResponse(BaseModel):
@@ -80,8 +94,11 @@ class UserResponse(BaseModel):
     """User profile response."""
     id: str
     name: str
-    email: str
+    username: str
+    email: Optional[str] = None
     role: str = "student"
+    class_id: Optional[str] = None
+    must_change_password: bool = False
     is_active: bool = True
     learning_profile: Optional[LearningProfileResponse] = None
     created_at: Optional[datetime] = None

@@ -1,7 +1,12 @@
+import os
+
 from pymongo import MongoClient
 
-# Connect to MongoDB (default port 27017)
-client = MongoClient("mongodb://localhost:27017/")
+# Connect to MongoDB (supports Atlas URI via env)
+mongo_uri = os.getenv("MONGODB_URI")
+if not mongo_uri:
+	raise RuntimeError("MONGODB_URI is required")
+client = MongoClient(mongo_uri)
 
 # Create or switch to a test database
 db = client["test_database"]

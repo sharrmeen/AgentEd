@@ -23,6 +23,7 @@ from langchain_core.output_parsers import PydanticOutputParser
 from app.agents.orchestration.state import AgentEdState
 from app.services.retrieval import RetrievalService
 from app.services.subject_service import SubjectService
+from app.services.user_service import UserService
 
 from dotenv import load_dotenv
 
@@ -68,7 +69,7 @@ class QuizOutput(BaseModel):
 # HELPER FUNCTIONS (used directly by agent)
 # ============================
 
-async def _get_quiz_content(topic: str, user_id: str, subject: str = None, chapter: str = None) -> str:
+async def _get_quiz_content(topic: str, user_id: str, subject: str = None, chapter: str = None, class_id: str = None) -> str:
     """Helper to retrieve quiz content."""
     try:
         retrieval_service = RetrievalService()
@@ -76,6 +77,7 @@ async def _get_quiz_content(topic: str, user_id: str, subject: str = None, chapt
         results = retrieval_service.query(
             question=f"Content about {topic}",
             user_id=user_id,
+            class_id=class_id,
             subject=subject,
             chapter=chapter,
             k=10
@@ -127,7 +129,7 @@ async def _get_objectives(subject_id: str, user_id: str, chapter_number: int) ->
 # ============================
 
 @tool
-def retrieve_quiz_content(topic: str, user_id: str, subject: str = None, chapter: str = None) -> str:
+def retrieve_quiz_content(topic: str, user_id: str, subject: str = None, chapter: str = None, class_id: str = None) -> str:
     """Retrieve curriculum content for quiz generation. Required before creating questions."""
     try:
         retrieval_service = RetrievalService()
@@ -135,6 +137,7 @@ def retrieve_quiz_content(topic: str, user_id: str, subject: str = None, chapter
         results = retrieval_service.query(
             question=f"Content about {topic}",
             user_id=user_id,
+            class_id=class_id,
             subject=subject,
             chapter=chapter,
             k=10
@@ -204,6 +207,7 @@ async def quiz_agent_node(state: AgentEdState) -> Dict:
     print("--- 📝 QUIZ AGENT: Working... ---")
     
     user_id = state["user_id"]
+    class_id = state.get("class_id")
     subject_id = state.get("subject_id")
     chapter_number = state.get("chapter_number")
     current_topic = state.get("current_topic")
@@ -231,6 +235,10 @@ async def quiz_agent_node(state: AgentEdState) -> Dict:
                     chapter_title = chapter_data.get("title")
                     topic = chapter_title  # Use actual chapter title as topic
                     print(f"📖 Found chapter: {chapter_number} - {chapter_title}")
+
+        if not class_id:
+            user = await UserService.get_user_by_id(ObjectId(user_id))
+            class_id = user.class_id if user else None
         
         # Directly retrieve content using helper functions
         print(f"📚 Retrieving quiz content for: {topic}")
@@ -241,7 +249,8 @@ async def quiz_agent_node(state: AgentEdState) -> Dict:
             topic=topic,
             user_id=user_id,
             subject=subject.subject_name if subject else None,
-            chapter=chapter_filter
+            chapter=chapter_filter,
+            class_id=class_id
         )
         
         # If no content found with chapter title, try without chapter filter
@@ -251,7 +260,8 @@ async def quiz_agent_node(state: AgentEdState) -> Dict:
                 topic=topic,
                 user_id=user_id,
                 subject=subject.subject_name if subject else None,
-                chapter=None
+                chapter=None,
+                class_id=class_id
             )
         
         # Get learning objectives

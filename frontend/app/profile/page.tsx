@@ -17,8 +17,10 @@ import { User, Mail, Calendar, BookOpen } from "lucide-react"
 interface UserResponse {
   id: string
   name: string
-  email: string
+  username: string
+  email?: string | null
   role: string
+  class_id?: string | null
   is_active: boolean
   learning_profile: {
     subjects: Record<string, any>
@@ -43,6 +45,7 @@ export default function ProfilePage() {
   const { toast } = useToast()
   const user = auth.getUser()
   const [isEditing, setIsEditing] = useState(false)
+  const [isSaving, setIsSaving] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const [userData, setUserData] = useState<UserResponse | null>(null)
   const [totalSubjects, setTotalSubjects] = useState(0)
@@ -68,7 +71,7 @@ export default function ProfilePage() {
       setUserData(profileResponse)
       setFormData({
         name: profileResponse.name,
-        email: profileResponse.email,
+        email: profileResponse.email || "",
       })
 
       if (subjectsResponse) {
@@ -85,12 +88,39 @@ export default function ProfilePage() {
     }
   }
 
-  const handleSave = () => {
-    toast({
-      title: "Profile updated",
-      description: "Your profile has been updated successfully",
-    })
-    setIsEditing(false)
+  const handleSave = async () => {
+    try {
+      setIsSaving(true)
+      const updatedProfile = await api.patch<UserResponse>("/api/v1/auth/me", {
+        name: formData.name,
+        email: formData.email,
+      })
+
+      setUserData(updatedProfile)
+      auth.setUser({
+        id: updatedProfile.id,
+        name: updatedProfile.name,
+        username: updatedProfile.username,
+        email: updatedProfile.email,
+        role: updatedProfile.role as "admin" | "teacher" | "student",
+        class_id: updatedProfile.class_id ?? null,
+        must_change_password: false,
+      })
+
+      toast({
+        title: "Profile updated",
+        description: "Your profile has been updated successfully",
+      })
+      setIsEditing(false)
+    } catch (error) {
+      toast({
+        title: "Update failed",
+        description: error instanceof Error ? error.message : "Could not update profile",
+        variant: "destructive",
+      })
+    } finally {
+      setIsSaving(false)
+    }
   }
 
   const formatDate = (dateString: string) => {
@@ -103,7 +133,7 @@ export default function ProfilePage() {
 
   if (isLoading) {
     return (
-      <AuthGuard>
+      <AuthGuard allowedRoles={["student", "teacher"]}>
         <div className="min-h-screen bg-background">
           <Navbar />
           <div className="flex min-h-[60vh] items-center justify-center">
@@ -115,7 +145,7 @@ export default function ProfilePage() {
   }
 
   return (
-    <AuthGuard>
+    <AuthGuard allowedRoles={["student", "teacher"]}>
       <div className="min-h-screen bg-background">
         <Navbar />
         <main className="container mx-auto max-w-2xl px-4 py-8">
@@ -174,10 +204,10 @@ export default function ProfilePage() {
                 <div className="flex gap-3 pt-4">
                   {isEditing ? (
                     <>
-                      <Button onClick={handleSave} className="flex-1">
-                        Save Changes
+                      <Button onClick={handleSave} className="flex-1" disabled={isSaving}>
+                        {isSaving ? "Saving..." : "Save Changes"}
                       </Button>
-                      <Button variant="outline" onClick={() => setIsEditing(false)} className="flex-1 bg-transparent">
+                      <Button variant="outline" onClick={() => setIsEditing(false)} className="flex-1 bg-transparent" disabled={isSaving}>
                         Cancel
                       </Button>
                     </>

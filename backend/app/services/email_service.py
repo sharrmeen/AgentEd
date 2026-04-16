@@ -288,7 +288,7 @@ class EmailService:
             message=message,
             subjects=subjects_data[:5],  # Max 5 subjects
             streak=streak,
-            app_url="http://localhost:3000/dashboard"
+            app_url=f"{settings.APP_URL_BASE.rstrip('/')}/dashboard"
         )
         
         return EmailService._send_email(
@@ -325,7 +325,7 @@ class EmailService:
             EmailService.STREAK_ALERT_TEMPLATE,
             user_name=user.get("name", "Student"),
             streak=streak,
-            app_url="http://localhost:3000/dashboard"
+            app_url=f"{settings.APP_URL_BASE.rstrip('/')}/dashboard"
         )
         
         return EmailService._send_email(
@@ -400,7 +400,7 @@ class EmailService:
             quizzes_completed=len(week_quizzes),
             avg_score=avg_score,
             achievements=achievements,
-            app_url="http://localhost:3000/analytics"
+            app_url=f"{settings.APP_URL_BASE.rstrip('/')}/analytics"
         )
         
         return EmailService._send_email(

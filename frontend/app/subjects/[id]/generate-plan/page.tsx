@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { useRouter, useParams } from "next/navigation"
 import { AuthGuard } from "@/components/auth-guard"
 import { Navbar } from "@/components/navbar"
@@ -16,11 +16,13 @@ import { LoadingSpinner } from "@/components/loading-spinner"
 import { ArrowLeft, Sparkles } from "lucide-react"
 import Link from "next/link"
 import { api } from "@/lib/api"
+import { getSubjectDifficulty, setSubjectDifficulty, type SubjectDifficulty } from "@/lib/study-preferences"
 
 export default function GeneratePlanPage() {
   const router = useRouter()
   const params = useParams()
   const { toast } = useToast()
+  const subjectId = String(params.id)
   const [isLoading, setIsLoading] = useState(false)
   const [formData, setFormData] = useState({
     target_days: "30",
@@ -28,13 +30,20 @@ export default function GeneratePlanPage() {
     difficulty: "intermediate",
   })
 
+  useEffect(() => {
+    const saved = getSubjectDifficulty(subjectId)
+    if (saved) {
+      setFormData((prev) => ({ ...prev, difficulty: saved }))
+    }
+  }, [subjectId])
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsLoading(true)
 
     try {
       // Backend endpoint: POST /api/v1/planner/{subject_id}/generate
-      await api.post(`/api/v1/planner/${params.id}/generate`, {
+      await api.post(`/api/v1/planner/${subjectId}/generate`, {
         target_days: Number.parseInt(formData.target_days),
         daily_hours: Number.parseFloat(formData.daily_hours),
         // Note: 'difficulty' is stored in preferences object
@@ -42,6 +51,8 @@ export default function GeneratePlanPage() {
           difficulty: formData.difficulty,
         },
       })
+
+      setSubjectDifficulty(subjectId, formData.difficulty as SubjectDifficulty)
 
       toast({
         title: "Study plan generated!",
@@ -61,7 +72,7 @@ export default function GeneratePlanPage() {
   }
 
   return (
-    <AuthGuard>
+    <AuthGuard allowedRoles={["student", "teacher"]}>
       <div className="min-h-screen bg-background">
         <Navbar />
         <main className="container mx-auto max-w-2xl px-4 py-8">
@@ -124,9 +135,9 @@ export default function GeneratePlanPage() {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="beginner">Beginner</SelectItem>
+                      <SelectItem value="easy">Easy</SelectItem>
                       <SelectItem value="intermediate">Intermediate</SelectItem>
-                      <SelectItem value="advanced">Advanced</SelectItem>
+                      <SelectItem value="difficult">Difficult</SelectItem>
                     </SelectContent>
                   </Select>
                   <p className="text-xs text-muted-foreground">Your familiarity with the subject</p>

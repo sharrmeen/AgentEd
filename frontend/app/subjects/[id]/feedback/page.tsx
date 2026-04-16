@@ -191,7 +191,7 @@ export default function FeedbackPage() {
 
   if (isLoading) {
     return (
-      <AuthGuard>
+      <AuthGuard allowedRoles={["student", "teacher"]}>
         <div className="min-h-screen bg-background">
           <Navbar />
           <div className="flex min-h-[60vh] items-center justify-center">
@@ -203,7 +203,7 @@ export default function FeedbackPage() {
   }
 
   return (
-    <AuthGuard>
+    <AuthGuard allowedRoles={["student", "teacher"]}>
       <div className="min-h-screen bg-background">
         <Navbar />
         <main className="container mx-auto max-w-4xl px-4 py-8">
@@ -309,7 +309,7 @@ export default function FeedbackPage() {
                   <ul className="space-y-2">
                     {feedback.revision_tips.map((tip, idx) => (
                       <li key={idx} className="flex items-start gap-2">
-                        <div className="mt-1 h-1.5 w-1.5 rounded-full bg-primary flex-shrink-0" />
+                        <div className="mt-1 h-1.5 w-1.5 rounded-full bg-primary shrink-0" />
                         <span className="text-sm">{tip}</span>
                       </li>
                     ))}
@@ -329,7 +329,7 @@ export default function FeedbackPage() {
                   <ul className="space-y-2">
                     {feedback.next_steps.map((step, idx) => (
                       <li key={idx} className="flex items-start gap-2">
-                        <div className="mt-1 flex h-5 w-5 items-center justify-center rounded-full bg-primary text-primary-foreground text-xs font-bold flex-shrink-0">
+                        <div className="mt-1 flex h-5 w-5 items-center justify-center rounded-full bg-primary text-primary-foreground text-xs font-bold shrink-0">
                           {idx + 1}
                         </div>
                         <span className="text-sm">{step}</span>

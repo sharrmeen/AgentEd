@@ -28,6 +28,12 @@ interface NotesListResponse {
   total: number
 }
 
+interface NoteDownloadUrlResponse {
+  download_url: string
+  requires_auth: boolean
+  expires_in?: number | null
+}
+
 export default function NotesPage() {
   const router = useRouter()
   const { toast } = useToast()
@@ -77,12 +83,30 @@ export default function NotesPage() {
     }
   }
 
-  const handleDownload = (note: Note) => {
-    // Download file from file_path
-    const link = document.createElement('a')
-    link.href = note.file_path
-    link.download = note.source_file
-    link.click()
+  const handleDownload = async (note: Note) => {
+    try {
+      const downloadMeta = await api.get<NoteDownloadUrlResponse>(`/api/v1/notes/${note.id}/download-url`)
+
+      if (downloadMeta.requires_auth) {
+        await api.downloadFile(downloadMeta.download_url, note.source_file)
+        return
+      }
+
+      const link = document.createElement("a")
+      link.href = downloadMeta.download_url
+      link.target = "_blank"
+      link.rel = "noopener noreferrer"
+      link.download = note.source_file
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+    } catch (error) {
+      toast({
+        title: "Download failed",
+        description: error instanceof Error ? error.message : "Could not download note",
+        variant: "destructive",
+      })
+    }
   }
 
   const formatDate = (dateString: string) => {
@@ -105,7 +129,7 @@ export default function NotesPage() {
   }, {} as Record<string, Note[]>)
 
   return (
-    <AuthGuard>
+    <AuthGuard allowedRoles={["student", "teacher"]}>
       <div className="min-h-screen bg-background">
         <Navbar />
 
@@ -129,7 +153,7 @@ export default function NotesPage() {
           </div>
 
           {isLoading ? (
-            <div className="flex min-h-[400px] items-center justify-center">
+            <div className="flex min-h-100 items-center justify-center">
               <div className="text-center space-y-4">
                 <LoadingSpinner size="lg" />
                 <p className="text-muted-foreground">Loading your notes...</p>
@@ -201,7 +225,7 @@ export default function NotesPage() {
                         <CardContent className="p-6">
                           <div className="flex items-start justify-between gap-4">
                             <div className="flex items-start gap-4 flex-1 min-w-0">
-                              <FileText className="h-6 w-6 text-primary mt-1 flex-shrink-0" />
+                              <FileText className="h-6 w-6 text-primary mt-1 shrink-0" />
                               <div className="min-w-0 flex-1">
                                 <p className="font-semibold truncate">{note.source_file}</p>
                                 <div className="flex items-center gap-2 text-sm text-muted-foreground mt-1">
@@ -215,7 +239,7 @@ export default function NotesPage() {
                                 </p>
                               </div>
                             </div>
-                            <div className="flex items-center gap-2 flex-shrink-0">
+                            <div className="flex items-center gap-2 shrink-0">
                               <Button
                                 variant="ghost"
                                 size="icon"

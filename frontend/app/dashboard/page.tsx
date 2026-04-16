@@ -14,7 +14,6 @@ import { BookOpen, Clock, Trophy, TrendingUp, Plus, MoreVertical, Trash2, Edit }
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Progress } from "@/components/ui/progress"
 
-// Backend response types
 interface BackendSubject {
   id: string
   subject_name: string
@@ -48,7 +47,6 @@ interface SessionListResponse {
   total: number
 }
 
-// Dashboard stats from real-time endpoint
 interface DashboardStats {
   total_study_hours: number
   quizzes_completed: number
@@ -56,7 +54,6 @@ interface DashboardStats {
   average_score: number
 }
 
-// Frontend display type
 interface Subject {
   id: string
   name: string
@@ -75,7 +72,6 @@ interface Stats {
   average_score: number
 }
 
-// Transform backend subject to frontend format
 function transformSubject(backendSubject: BackendSubject): Subject {
   return {
     id: backendSubject.id,
@@ -103,29 +99,24 @@ export default function DashboardPage() {
     try {
       setIsLoading(true)
       
-      // Fetch subjects and dashboard stats in parallel
       const [subjectsResponse, dashboardStats] = await Promise.all([
         api.get<SubjectsResponse>("/api/v1/subjects/"),
         api.get<DashboardStats>("/api/v1/dashboard/stats").catch(() => null),
       ])
 
-      // Transform backend subjects to frontend format
       let transformedSubjects = subjectsResponse.subjects.map(transformSubject)
       
-      // Fetch session data for all subjects to get last_active timestamp
       try {
         const sessionDataPromises = transformedSubjects.map(s =>
           api.get<SessionListResponse>(`/api/v1/sessions/subject/${s.id}`).catch(() => null)
         )
         const sessionDataArray = await Promise.all(sessionDataPromises)
         
-        // Update subjects with last_active from most recent session
         transformedSubjects = transformedSubjects.map((subject, idx) => {
           const sessionData = sessionDataArray[idx]
           let lastActive: string | null = null
           
           if (sessionData && sessionData.sessions && sessionData.sessions.length > 0) {
-            // Find the most recent last_active from all sessions
             const mostRecentSession = sessionData.sessions.reduce((max, session) => {
               if (!max || !session.last_active) return max
               if (!max.last_active) return session
@@ -143,7 +134,6 @@ export default function DashboardPage() {
         console.log("Could not fetch session data, last_active will be null")
       }
       
-      // Fetch planner states for subjects with plans
       const subjectsWithPlans = transformedSubjects.filter(s => s.study_plan_generated)
       if (subjectsWithPlans.length > 0) {
         try {
@@ -153,7 +143,6 @@ export default function DashboardPage() {
             )
           )
           
-          // Update subjects with completion percentages
           transformedSubjects = transformedSubjects.map((subject, idx) => {
             if (subject.study_plan_generated && subjectsWithPlans[idx]?.id === subject.id) {
               const planner = plannerStates[idx]
@@ -171,7 +160,6 @@ export default function DashboardPage() {
       
       setSubjects(transformedSubjects)
 
-      // Set stats from dashboard stats endpoint (calculated in real-time)
       if (dashboardStats) {
         setStats({
           total_study_hours: dashboardStats.total_study_hours || 0,
@@ -216,7 +204,6 @@ export default function DashboardPage() {
   const getProgressPercentage = (subject: Subject) => {
     if (!subject.syllabus_uploaded) return 0
     if (!subject.study_plan_generated) return 33
-    // Return actual completion percentage from planner state, or at least 33 to show plan exists
     return subject.completion_percent ?? 33
   }
 
@@ -234,7 +221,7 @@ export default function DashboardPage() {
   }
 
   return (
-    <AuthGuard>
+    <AuthGuard allowedRoles={["student"]}>
       <div className="min-h-screen bg-background">
         <Navbar />
         <main className="container mx-auto px-4 py-8">

@@ -80,6 +80,7 @@ async def generate_study_plan_core(
         }
     
     total_hours = target_days * daily_hours
+    difficulty_level = user_preferences.get("difficulty", "intermediate")
     
     # Create parser with structured output schema
     parser = PydanticOutputParser(pydantic_object=StudyPlanOutput)
@@ -93,6 +94,7 @@ SUBJECT: {subject_name}
 TOTAL HOURS AVAILABLE: {total_hours} hours
 TARGET DAYS: {target_days} days
 DAILY STUDY: {daily_hours} hours/day
+LEARNER DIFFICULTY PREFERENCE: {difficulty_level}
 
 SYLLABUS TEXT:
 {syllabus_text}
@@ -106,6 +108,10 @@ Rules:
 6. For mathematical/technical subjects, include prerequisite concepts early
 7. Keep chapter titles concise (max 50 characters)
 8. Keep objective descriptions brief and actionable
+9. Adapt chapter depth and objective complexity to learner difficulty:
+    - easy: simpler progression, more fundamentals and recap
+    - intermediate: balanced progression and scope
+    - difficult: deeper technical depth and advanced objectives early when appropriate
 
 {format_instructions}"""
     )
@@ -120,6 +126,7 @@ Rules:
             "total_hours": total_hours,
             "target_days": target_days,
             "daily_hours": daily_hours,
+            "difficulty_level": difficulty_level,
             "syllabus_text": syllabus_text,
             "format_instructions": format_instructions
         })

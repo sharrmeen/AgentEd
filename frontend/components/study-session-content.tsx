@@ -44,8 +44,6 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 
-
-// Backend response types
 interface SessionResponse {
   id: string
   subject_id: string
@@ -86,7 +84,6 @@ interface BackendSubject {
   updated_at: string
 }
 
-// Frontend display types
 interface Chapter {
   chapter_number: number
   title: string
@@ -97,7 +94,7 @@ interface Chapter {
 interface Message {
   role: "user" | "assistant"
   content: string
-  timestamp?: Date | string // Support both Date objects and ISO strings
+  timestamp?: Date | string
   confidence?: number
 }
 
@@ -117,7 +114,6 @@ interface ObjectiveCompleteResponse {
   message: string
 }
 
-// Notes types
 interface NoteItem {
   id: string
   subject_id: string
@@ -161,13 +157,11 @@ export function StudySessionContent() {
   const chapterNumber = searchParams.get("chapter")
   const messagesEndRef = useRef<HTMLDivElement>(null)
   
-  // Chat history pagination state
   const [isLoadingMoreMessages, setIsLoadingMoreMessages] = useState(false)
   const [hasMoreMessages, setHasMoreMessages] = useState(false)
   const [totalMessages, setTotalMessages] = useState(0)
   const [loadedMessageCount, setLoadedMessageCount] = useState(0)
   
-  // Notes upload state
   const [showUploadDialog, setShowUploadDialog] = useState(false)
   const [hasNotes, setHasNotes] = useState(false)
   const [chapterNotes, setChapterNotes] = useState<NoteItem[]>([])
@@ -175,7 +169,6 @@ export function StudySessionContent() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [subjectName, setSubjectName] = useState<string>("")
   
-  // Intent selection state
   const [selectedIntent, setSelectedIntent] = useState<"answer" | "explain" | "summarize">("answer")
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -186,14 +179,12 @@ export function StudySessionContent() {
   }, [params.id, chapterNumber])
 
   useEffect(() => {
-    // Load chat history when chatId is set (session resumed or created)
     if (chatId) {
       loadChatHistory()
     }
   }, [chatId])
 
   useEffect(() => {
-    // Scroll to bottom when messages change
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
   }, [messages])
 
@@ -203,12 +194,9 @@ export function StudySessionContent() {
       const chapterNum = Number(chapterNumber)
       console.log(`🚀 Initializing session for subject: ${params.id}, chapter: ${chapterNum}`)
 
-      // Fetch subject to get chapter details from the plan
-      // Endpoint: GET /api/v1/subjects/{id}
       const subjectData = await api.get<BackendSubject>(`/api/v1/subjects/${params.id}`)
       setSubjectName(subjectData.subject_name)
 
-      // Find the chapter in the plan
       const chapterData = subjectData.plan?.chapters?.find(
         (c) => c.chapter_number === chapterNum
       )
@@ -219,11 +207,10 @@ export function StudySessionContent() {
         setChapter({
           chapter_number: chapterNum,
           title: chapterData.title,
-          content: "", // Content can be generated on demand
+          content: "",
           learning_objectives: chapterData.objectives || [],
         })
       } else {
-        // Fallback: set basic chapter info even if not found in plan
         setChapter({
           chapter_number: chapterNum,
           title: chapterTitle,
@@ -232,8 +219,6 @@ export function StudySessionContent() {
         })
       }
 
-      // Check if notes exist for this chapter
-      // Endpoint: GET /api/v1/notes/{subject_id}?chapter={chapter}
       try {
         const chapterIdentifier = `Chapter ${chapterNum}: ${chapterTitle}`
         const notesResponse = await api.get<NotesListResponse>(
@@ -244,7 +229,6 @@ export function StudySessionContent() {
           setHasNotes(true)
           setChapterNotes(notesResponse.notes)
         } else {
-          // Try with just chapter number format
           const altNotesResponse = await api.get<NotesListResponse>(
             `/api/v1/notes/${params.id}?chapter=${encodeURIComponent(`Chapter ${chapterNum}`)}`
           )
@@ -253,17 +237,14 @@ export function StudySessionContent() {
             setChapterNotes(altNotesResponse.notes)
           } else {
             setHasNotes(false)
-            setShowUploadDialog(true) // Show upload dialog if no notes
+            setShowUploadDialog(true)
           }
         }
       } catch {
-        // No notes found, show upload dialog
         setHasNotes(false)
         setShowUploadDialog(true)
       }
 
-      // Create or resume study session
-      // Endpoint: POST /api/v1/sessions/ (returns existing if already created)
       try {
         const sessionData = await api.post<SessionResponse>("/api/v1/sessions/", {
           subject_id: params.id,
@@ -275,18 +256,14 @@ export function StudySessionContent() {
         setChatId(sessionData.chat_id)
         console.log(`✅ Chat ID set to: ${sessionData.chat_id}`)
       } catch (error) {
-        // If creation fails, try to get existing session
         const errorMessage = error instanceof Error ? error.message : String(error)
         
-        // Only try to fetch existing if it's a duplicate key error
         if (errorMessage.includes("E11000") || errorMessage.includes("duplicate")) {
           try {
-            // Get all sessions for this subject
             const sessionsResponse = await api.get<{ sessions: SessionResponse[]; total: number }>(
               `/api/v1/sessions/subject/${params.id}`
             )
             
-            // Find the session for this chapter
             const existingSession = sessionsResponse.sessions.find(
               (s) => s.chapter_number === chapterNum
             )
@@ -318,8 +295,6 @@ export function StudySessionContent() {
         }
       }
 
-      // Fetch chapter progress (completed objectives)
-      // Endpoint: GET /api/v1/planner/{subject_id}/chapter/{chapter_number}
       try {
         const progressData = await api.get<ChapterProgressResponse>(
           `/api/v1/planner/${params.id}/chapter/${chapterNum}`
@@ -330,7 +305,6 @@ export function StudySessionContent() {
         }
         setIsChapterComplete(progressData.is_complete)
       } catch (progressError) {
-        // Progress not found is OK - user hasn't started this chapter yet
         console.log("No progress data found for chapter:", progressError)
       }
     } catch (error) {
@@ -393,17 +367,16 @@ export function StudySessionContent() {
       setHasMoreMessages(historyResponse.has_more)
 
       if (historyResponse.messages && historyResponse.messages.length > 0) {
-        // Convert backend messages to frontend Message format
         const loadedMessages: Message[] = historyResponse.messages.flatMap((msg) => [
           {
             role: "user" as const,
             content: msg.question,
-            timestamp: msg.created_at, // Use ISO string directly from backend
+            timestamp: msg.created_at,
           },
           {
             role: "assistant" as const,
             content: msg.answer,
-            timestamp: msg.created_at, // Use ISO string directly from backend
+            timestamp: msg.created_at,
             confidence: msg.confidence_score,
           },
         ])
@@ -411,7 +384,6 @@ export function StudySessionContent() {
         setMessages(loadedMessages)
         console.log(`✅ Loaded ${loadedMessages.length} recent messages. Total: ${historyResponse.total}`)
 
-        // Start loading more messages in the background (non-blocking)
         if (historyResponse.has_more) {
           loadMoreMessagesBackground(INITIAL_LOAD_LIMIT)
         }
@@ -420,7 +392,6 @@ export function StudySessionContent() {
         setMessages([])
       }
     } catch (error) {
-      // Log the actual error instead of silently failing
       console.error("❌ Error loading chat history:", error)
       if (error instanceof Error) {
         console.error("Error message:", error.message)
@@ -453,7 +424,7 @@ export function StudySessionContent() {
         has_more: boolean
       }
 
-      const BACKGROUND_LOAD_LIMIT = 20 // Load more in background
+      const BACKGROUND_LOAD_LIMIT = 20
       const historyResponse = await api.get<ChatHistoryResponse>(
         `/api/v1/chat/${chatId}/history?limit=${BACKGROUND_LOAD_LIMIT}&skip=${skip}`
       )
@@ -473,17 +444,14 @@ export function StudySessionContent() {
           },
         ])
 
-        // Prepend the older messages to the current messages
         setMessages((prev) => [...moreMessages, ...prev])
         setLoadedMessageCount((prev) => prev + moreMessages.length)
 
-        // Continue loading if there are more
         if (historyResponse.has_more) {
           setHasMoreMessages(true)
-          // Schedule next background load
           setTimeout(() => {
             loadMoreMessagesBackground(skip + BACKGROUND_LOAD_LIMIT)
-          }, 500) // Small delay to avoid overwhelming the API
+          }, 500)
         } else {
           setHasMoreMessages(false)
         }
@@ -509,14 +477,13 @@ export function StudySessionContent() {
     const newMessage: Message = { 
       role: "user", 
       content: userMessage,
-      timestamp: new Date().toISOString() // Use ISO string instead of Date object
+      timestamp: new Date().toISOString()
     }
     setMessages((prev) => [...prev, newMessage])
     setUserMessage("")
     setIsSending(true)
 
     try {
-      // Endpoint: POST /api/v1/chat/{chat_id}/message
       const response = await api.post<ChatMessageResponse>(`/api/v1/chat/${chatId}/message`, {
         question: userMessage,
         intent_tag: selectedIntent,
@@ -527,7 +494,7 @@ export function StudySessionContent() {
       setMessages((prev) => [...prev, { 
         role: "assistant", 
         content: response.answer,
-        timestamp: new Date().toISOString(), // Use ISO string instead of Date object
+        timestamp: new Date().toISOString(),
         confidence: response.confidence_score || undefined
       }])
     } catch (error) {
@@ -537,7 +504,6 @@ export function StudySessionContent() {
         description: error instanceof Error ? error.message : "Failed to send message",
         variant: "destructive",
       })
-      // Remove the user message if sending failed
       setMessages((prev) => prev.slice(0, -1))
     } finally {
       setIsSending(false)
@@ -545,7 +511,6 @@ export function StudySessionContent() {
   }
 
   const toggleObjective = async (objective: string) => {
-    // Prevent toggling if already completed (cannot uncomplete from frontend)
     if (completedObjectives.has(objective)) {
       return
     }
@@ -553,14 +518,12 @@ export function StudySessionContent() {
     setIsSavingProgress(true)
     
     try {
-      // Endpoint: POST /api/v1/planner/objective/complete
       const response = await api.post<ObjectiveCompleteResponse>("/api/v1/planner/objective/complete", {
         subject_id: params.id as string,
         chapter_number: Number(chapterNumber),
         objective: objective,
       })
       
-      // Update local state
       const newSet = new Set(completedObjectives)
       newSet.add(objective)
       setCompletedObjectives(newSet)
@@ -594,7 +557,6 @@ export function StudySessionContent() {
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (file) {
-      // Validate file type
       const validTypes = ['application/pdf', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'image/png', 'image/jpeg', 'image/jpg']
       if (!validTypes.includes(file.type)) {
         toast({
@@ -614,41 +576,22 @@ export function StudySessionContent() {
     setIsUploading(true)
     try {
       const chapterIdentifier = `Chapter ${chapter.chapter_number}: ${chapter.title}`
-      
-      // Create FormData for file upload
-      const formData = new FormData()
-      formData.append('file', selectedFile)
-      
-      // Upload notes
-      const response = await fetch(
-        `http://localhost:8000/api/v1/notes/${params.id}/upload?chapter=${encodeURIComponent(chapterIdentifier)}`,
-        {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${localStorage.getItem('token')}`,
-          },
-          body: formData,
-        }
+
+      await api.uploadFile<NotesUploadResponse>(
+        `/api/v1/notes/${params.id}/upload`,
+        selectedFile,
+        { chapter: chapterIdentifier }
       )
-
-      if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.detail || 'Failed to upload notes')
-      }
-
-      const result: NotesUploadResponse = await response.json()
       
       toast({
         title: "Notes uploaded!",
         description: `${selectedFile.name} has been uploaded and processed for ${chapterIdentifier}`,
       })
 
-      // Update state
       setHasNotes(true)
       setShowUploadDialog(false)
       setSelectedFile(null)
       
-      // Refresh notes list
       const notesResponse = await api.get<NotesListResponse>(
         `/api/v1/notes/${params.id}?chapter=${encodeURIComponent(chapterIdentifier)}`
       )
@@ -702,7 +645,7 @@ export function StudySessionContent() {
     <main className="container mx-auto px-4 py-8 min-h-screen overflow-y-auto">
       {/* Notes Upload Dialog */}
       <Dialog open={showUploadDialog} onOpenChange={setShowUploadDialog}>
-        <DialogContent className="sm:max-w-[500px]">
+        <DialogContent className="sm:max-w-125">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Upload className="h-5 w-5 text-primary" />
@@ -793,7 +736,6 @@ export function StudySessionContent() {
               </div>
             </div>
             
-            {/* Existing notes */}
             {chapterNotes.length > 0 && (
               <div className="space-y-2">
                 <Label>Existing Notes</Label>
@@ -836,7 +778,6 @@ export function StudySessionContent() {
         </DialogContent>
       </Dialog>
 
-      {/* Header Section */}
       <div className="mb-8">
         <Link href={`/subjects/${params.id}`} className="inline-block mb-4">
           <Button variant="ghost" className="gap-2 hover:bg-muted">
@@ -853,7 +794,6 @@ export function StudySessionContent() {
         </div>
       </div>
 
-      {/* Progress Bar */}
       {chapter.learning_objectives.length > 0 && (
         <div className="mb-8">
           <div className="flex items-center justify-between mb-2">
@@ -865,10 +805,9 @@ export function StudySessionContent() {
       )}
 
       <div className="grid gap-6 lg:grid-cols-4">
-        {/* Main Chat Area */}
         <div className="lg:col-span-3">
-          <Card className="flex flex-col min-h-[800px] h-[calc(100vh-280px)] max-h-[900px] border-2 border-primary/10">
-            <CardHeader className="border-b bg-gradient-to-r from-primary/5 to-transparent">
+          <Card className="flex flex-col min-h-200 h-[calc(100vh-280px)] max-h-225 border-2 border-primary/10">
+            <CardHeader className="border-b bg-linear-to-r from-primary/5 to-transparent">
               <div className="flex items-start justify-between">
                 <div>
                   <CardTitle className="flex items-center gap-2">
@@ -980,7 +919,7 @@ export function StudySessionContent() {
               )}
 
               {/* Message Input Area */}
-              <div className="flex-shrink-0 space-y-2 border-t pt-3">
+              <div className="shrink-0 space-y-2 border-t pt-3">
                 <Textarea
                   placeholder="Ask something about this chapter..."
                   value={userMessage}
@@ -993,7 +932,7 @@ export function StudySessionContent() {
                   }}
                   disabled={isSending || !chatId}
                   rows={2}
-                  className="resize-none border-primary/20 focus:border-primary/50 min-h-[60px]"
+                  className="resize-none border-primary/20 focus:border-primary/50 min-h-15"
                 />
                 <div className="flex gap-2">
                   <Select
@@ -1001,7 +940,7 @@ export function StudySessionContent() {
                     onValueChange={(value: "answer" | "explain" | "summarize") => setSelectedIntent(value)}
                     disabled={isSending || !chatId}
                   >
-                    <SelectTrigger className="w-[140px]">
+                    <SelectTrigger className="w-35">
                       <SelectValue placeholder="Intent" />
                     </SelectTrigger>
                     <SelectContent>
@@ -1081,7 +1020,7 @@ export function StudySessionContent() {
                             }`}
                             onClick={() => toggleObjective(objective)}
                           >
-                            <div className={`flex-shrink-0 mt-0.5 h-5 w-5 rounded border-2 flex items-center justify-center transition-all ${
+                            <div className={`shrink-0 mt-0.5 h-5 w-5 rounded border-2 flex items-center justify-center transition-all ${
                               completedObjectives.has(objective)
                                 ? "bg-green-600 border-green-600"
                                 : "border-muted-foreground hover:border-primary"
@@ -1142,7 +1081,7 @@ export function StudySessionContent() {
                             key={note.id} 
                             className="flex items-start gap-2 p-2 rounded-md bg-muted/50 hover:bg-muted transition-colors"
                           >
-                            <FileText className="h-4 w-4 text-primary flex-shrink-0 mt-0.5" />
+                            <FileText className="h-4 w-4 text-primary shrink-0 mt-0.5" />
                             <div className="flex-1 min-w-0">
                               <p className="text-sm font-medium truncate">{note.source_file}</p>
                               <p className="text-xs text-muted-foreground">{note.file_type.toUpperCase()}</p>
@@ -1170,7 +1109,7 @@ export function StudySessionContent() {
           </Card>
 
           {/* Action Card */}
-          <Card className="bg-gradient-to-br from-primary/5 to-transparent border-primary/20">
+          <Card className="bg-linear-to-br from-primary/5 to-transparent border-primary/20">
             <CardContent className="p-4 space-y-3">
               <p className="text-sm font-medium">Ready for assessment?</p>
               <Button 

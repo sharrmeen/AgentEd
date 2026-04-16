@@ -11,6 +11,8 @@ import { useToast } from "@/hooks/use-toast"
 import { ArrowLeft, ClipboardCheck, Play, CheckCircle2, Plus, BookOpen } from "lucide-react"
 import Link from "next/link"
 import { api } from "@/lib/api"
+import { auth } from "@/lib/auth"
+import { getSubjectDifficulty, setSubjectDifficulty, toQuizDifficulty, type SubjectDifficulty } from "@/lib/study-preferences"
 import {
   Select,
   SelectContent,
@@ -108,20 +110,37 @@ export default function QuizzesPage() {
   const params = useParams()
   const searchParams = useSearchParams()
   const { toast } = useToast()
+  const user = auth.getUser()
+  const isTeacher = user?.role === "teacher"
+  const subjectId = String(params.id)
   const [isLoading, setIsLoading] = useState(true)
   const [quizzes, setQuizzes] = useState<Quiz[]>([])
   const [isGenerating, setIsGenerating] = useState(false)
   const [chapters, setChapters] = useState<ChapterInfo[]>([])
   const [selectedChapter, setSelectedChapter] = useState<string>("")
+  const [difficulty, setDifficulty] = useState<SubjectDifficulty>("intermediate")
   
   // Get chapter from URL if coming from study session
   const chapterFromUrl = searchParams.get("chapter")
 
   useEffect(() => {
-    if (params.id) {
+    if (subjectId) {
       fetchSubjectAndQuizzes()
     }
-  }, [params.id])
+  }, [subjectId])
+
+  useEffect(() => {
+    if (!subjectId) return
+    const saved = getSubjectDifficulty(subjectId)
+    if (saved) {
+      setDifficulty(saved)
+    }
+  }, [subjectId])
+
+  useEffect(() => {
+    if (!subjectId || isTeacher) return
+    setSubjectDifficulty(subjectId, difficulty)
+  }, [difficulty, subjectId, isTeacher])
 
   useEffect(() => {
     // Pre-select chapter from URL query param if present
@@ -136,7 +155,7 @@ export default function QuizzesPage() {
       
       // Fetch subject to get chapters
       try {
-        const subjectResponse = await api.get<SubjectResponse>(`/api/v1/subjects/${params.id}`)
+        const subjectResponse = await api.get<SubjectResponse>(`/api/v1/subjects/${subjectId}`)
         if (subjectResponse.plan?.chapters) {
           setChapters(subjectResponse.plan.chapters)
           // Pre-select first chapter if none selected and no URL param
@@ -149,12 +168,12 @@ export default function QuizzesPage() {
       }
       
       // Fetch quizzes for this subject
-      const quizzesResponse = await api.get<QuizzesResponse>(`/api/v1/quiz?subject_id=${params.id}`)
+      const quizzesResponse = await api.get<QuizzesResponse>(`/api/v1/quiz?subject_id=${subjectId}`)
       
       // Fetch quiz results to know which are completed
       let resultsMap: Record<string, { score: number; percentage: number }> = {}
       try {
-        const resultsResponse = await api.get<QuizResultsResponse>(`/api/v1/quiz/${params.id}/results`)
+        const resultsResponse = await api.get<QuizResultsResponse>(`/api/v1/quiz/${subjectId}/results`)
         resultsMap = resultsResponse.results.reduce((acc, r) => {
           acc[r.quiz_id] = { score: r.score, percentage: r.percentage }
           return acc
@@ -203,11 +222,11 @@ export default function QuizzesPage() {
       const selectedChapterInfo = chapters.find(c => c.chapter_number === chapterNum)
       
       await api.post<BackendQuiz>("/api/v1/quiz", {
-        subject_id: params.id,
+        subject_id: subjectId,
         chapter_number: chapterNum,
         num_questions: 10,
         quiz_type: "practice",
-        difficulty: "medium",
+        difficulty: toQuizDifficulty(difficulty),
       })
 
       toast({
@@ -230,12 +249,12 @@ export default function QuizzesPage() {
   }
 
   return (
-    <AuthGuard>
+    <AuthGuard allowedRoles={["student", "teacher"]}>
       <div className="min-h-screen bg-background">
         <Navbar />
         <main className="container mx-auto px-4 py-8">
           <div className="mb-6">
-            <Link href={`/subjects/${params.id}`}>
+            <Link href={`/subjects/${subjectId}`}>
               <Button variant="ghost" className="gap-2">
                 <ArrowLeft className="h-4 w-4" />
                 Back to Subject
@@ -249,9 +268,9 @@ export default function QuizzesPage() {
               <p className="mt-2 text-muted-foreground">Test your knowledge and track your progress</p>
             </div>
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-              {chapters.length > 0 && (
+              {!isTeacher && chapters.length > 0 && (
                 <Select value={selectedChapter} onValueChange={setSelectedChapter}>
-                  <SelectTrigger className="w-full sm:w-[200px]">
+                  <SelectTrigger className="w-full sm:w-50">
                     <BookOpen className="mr-2 h-4 w-4" />
                     <SelectValue placeholder="Select chapter" />
                   </SelectTrigger>
@@ -264,19 +283,33 @@ export default function QuizzesPage() {
                   </SelectContent>
                 </Select>
               )}
-              <Button onClick={generateQuiz} disabled={isGenerating || !selectedChapter} className="gap-2">
-                {isGenerating ? (
-                  <>
-                    <LoadingSpinner size="sm" />
-                    Generating...
-                  </>
-                ) : (
-                  <>
-                    <Plus className="h-4 w-4" />
-                    Generate Quiz
-                  </>
-                )}
-              </Button>
+              {!isTeacher && (
+                <Select value={difficulty} onValueChange={(value) => setDifficulty(value as SubjectDifficulty)}>
+                  <SelectTrigger className="w-full sm:w-45">
+                    <SelectValue placeholder="Difficulty" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="easy">Easy</SelectItem>
+                    <SelectItem value="intermediate">Intermediate</SelectItem>
+                    <SelectItem value="difficult">Difficult</SelectItem>
+                  </SelectContent>
+                </Select>
+              )}
+              {!isTeacher && (
+                <Button onClick={generateQuiz} disabled={isGenerating || !selectedChapter} className="gap-2">
+                  {isGenerating ? (
+                    <>
+                      <LoadingSpinner size="sm" />
+                      Generating...
+                    </>
+                  ) : (
+                    <>
+                      <Plus className="h-4 w-4" />
+                      Generate Quiz
+                    </>
+                  )}
+                </Button>
+              )}
             </div>
           </div>
 

@@ -22,7 +22,7 @@ from app.schemas.quiz import (
     QuizResultListResponse,
     QuizStatisticsResponse
 )
-from app.api.deps import get_user_id
+from app.api.deps import get_user_id, get_current_user
 
 router = APIRouter()
 
@@ -30,7 +30,7 @@ router = APIRouter()
 @router.post("", response_model=QuizResponse, status_code=status.HTTP_201_CREATED)
 async def generate_quiz(
     request: QuizGenerateRequest,
-    user_id: ObjectId = Depends(get_user_id)
+    current_user: dict = Depends(get_current_user)
 ):
     """
     Generate a new quiz for a subject/chapter.
@@ -46,11 +46,9 @@ async def generate_quiz(
         - num_questions: Number of questions (1-50, default 10)
         - quiz_type: "practice" | "revision" | "mock_exam"
         - difficulty: "easy" | "medium" | "hard" | "mixed" (optional)
-    
     Returns:
         Generated quiz ready to take
     """
-    try:
         subject_obj_id = ObjectId(request.subject_id)
     except Exception:
         raise HTTPException(
@@ -59,12 +57,16 @@ async def generate_quiz(
         )
     
     try:
+        user_id = ObjectId(current_user["id"])
+
         # Use agent workflow to generate quiz
         workflow_result = await run_workflow(
             user_id=str(user_id),
             user_query=f"Generate a {request.quiz_type} quiz with {request.num_questions} questions",
             subject_id=request.subject_id,
             chapter_number=request.chapter_number,
+            class_id=current_user.get("class_id"),
+            role=current_user.get("role"),
             constraints={
                 "num_questions": request.num_questions,
                 "quiz_type": request.quiz_type,

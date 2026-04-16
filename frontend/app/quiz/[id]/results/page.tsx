@@ -122,7 +122,7 @@ export default function QuizResultsPage() {
 
   if (isLoading) {
     return (
-      <AuthGuard>
+      <AuthGuard allowedRoles={["student", "teacher"]}>
         <div className="min-h-screen bg-background">
           <Navbar />
           <div className="flex min-h-[60vh] items-center justify-center">
@@ -135,7 +135,7 @@ export default function QuizResultsPage() {
 
   if (!results) {
     return (
-      <AuthGuard>
+      <AuthGuard allowedRoles={["student", "teacher"]}>
         <div className="min-h-screen bg-background">
           <Navbar />
           <div className="container mx-auto px-4 py-8">
@@ -157,7 +157,7 @@ export default function QuizResultsPage() {
   }
 
   return (
-    <AuthGuard>
+    <AuthGuard allowedRoles={["student", "teacher"]}>
       <div className="min-h-screen bg-background">
         <Navbar />
         <main className="container mx-auto max-w-4xl px-4 py-8">

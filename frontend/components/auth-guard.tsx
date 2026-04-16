@@ -6,17 +6,31 @@ import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { auth } from "@/lib/auth"
 
-export function AuthGuard({ children }: { children: React.ReactNode }) {
+type Role = "admin" | "teacher" | "student"
+
+export function AuthGuard({
+  children,
+  allowedRoles,
+}: {
+  children: React.ReactNode
+  allowedRoles?: Role[]
+}) {
   const router = useRouter()
   const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
     if (!auth.isAuthenticated()) {
       router.push("/login")
+      return
+    }
+
+    const user = auth.getUser()
+    if (allowedRoles && user && !allowedRoles.includes(user.role)) {
+      router.push(auth.getDefaultRoute(user))
     } else {
       setIsLoading(false)
     }
-  }, [router])
+  }, [router, allowedRoles])
 
   if (isLoading) {
     return (

@@ -1,4 +1,5 @@
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
+const API_BASE_URL =
+  process.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000"
 
 interface ApiError {
   detail: string | Array<{ loc: string[]; msg: string; type: string }>
@@ -85,6 +86,13 @@ export class ApiClient {
     })
   }
 
+  async patch<T>(endpoint: string, data?: unknown): Promise<T> {
+    return this.request<T>(endpoint, {
+      method: "PATCH",
+      body: data ? JSON.stringify(data) : undefined,
+    })
+  }
+
   async delete<T>(endpoint: string): Promise<T> {
     return this.request<T>(endpoint, { method: "DELETE" })
   }
@@ -130,6 +138,36 @@ export class ApiClient {
     }
 
     return await response.json()
+  }
+
+  async downloadFile(endpoint: string, downloadName: string): Promise<void> {
+    const token = this.getAuthToken()
+    const url = endpoint.startsWith("http") ? endpoint : `${this.baseUrl}${endpoint}`
+
+    const response = await fetch(url, {
+      method: "GET",
+      headers: {
+        ...(token && { Authorization: `Bearer ${token}` }),
+      },
+    })
+
+    if (!response.ok) {
+      const error: ApiError = await response.json().catch(() => ({ detail: "Download failed" }))
+      if (Array.isArray(error.detail)) {
+        throw new Error(error.detail.map((e) => e.msg).join(", "))
+      }
+      throw new Error(error.detail || `HTTP ${response.status}`)
+    }
+
+    const blob = await response.blob()
+    const objectUrl = window.URL.createObjectURL(blob)
+    const link = document.createElement("a")
+    link.href = objectUrl
+    link.download = downloadName
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    window.URL.revokeObjectURL(objectUrl)
   }
 }
 

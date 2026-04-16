@@ -17,7 +17,7 @@ from app.schemas.chat import (
     ChatHistoryResponse,
     ChatResponse
 )
-from app.api.deps import get_user_id
+from app.api.deps import get_user_id, get_current_user
 
 router = APIRouter()
 
@@ -69,7 +69,7 @@ async def get_chat(
 async def send_message(
     chat_id: str,
     request: ChatMessageRequest,
-    user_id: ObjectId = Depends(get_user_id)
+    current_user: dict = Depends(get_current_user)
 ):
     """
     Send a question and get an answer.
@@ -86,6 +86,8 @@ async def send_message(
     Returns:
         Answer with source indication (CACHE or LLM)
     """
+    user_id = ObjectId(current_user["id"])
+
     try:
         chat_obj_id = ObjectId(chat_id)
     except Exception:
@@ -133,7 +135,9 @@ async def send_message(
                 subject_id=str(chat.subject_id),
                 chapter_number=chat.chapter_number,
                 session_id=str(chat.session_id),
-                intent=request.intent_tag or "answer"
+                intent=request.intent_tag or "answer",
+                class_id=current_user.get("class_id"),
+                role=current_user.get("role")
             )
             
             # Debug: Log workflow result structure

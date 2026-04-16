@@ -1,7 +1,7 @@
 # backend/app/services/retrieval.py
-import os
-from langchain_chroma import Chroma
+from app.core.config import settings
 from app.services.embedding_service import get_embedding_model
+from app.services.pinecone_service import PineconeService
 
 
 class RetrievalService:
@@ -9,17 +9,39 @@ class RetrievalService:
     Handles all document retrieval and query operations.
     """
 
-    def __init__(self, db_directory="./chroma_db"):
-        self.db_directory = db_directory
+    def __init__(self, db_directory=None):
         self.embedding_model = get_embedding_model()
+        self.vector_provider = settings.VECTOR_DB_PROVIDER.lower().strip()
+        if self.vector_provider != "pinecone":
+            raise ValueError("VECTOR_DB_PROVIDER must be 'pinecone' in cloud runtime")
 
 
     def _get_db(self):
-        return Chroma(
-            persist_directory=self.db_directory,
-            embedding_function=self.embedding_model,
-            collection_name="rag_knowledge_base"
-        )
+        return PineconeService()
+
+    @staticmethod
+    def _to_pinecone_filter(filter_dict):
+        """Convert Chroma-style filters to Pinecone compatible metadata filters."""
+        if not filter_dict:
+            return None
+
+        if "$and" in filter_dict:
+            clauses = []
+            for clause in filter_dict["$and"]:
+                for key, value in clause.items():
+                    if isinstance(value, dict) and "$eq" in value:
+                        clauses.append({key: {"$eq": value["$eq"]}})
+                    else:
+                        clauses.append({key: value})
+            return {"$and": clauses}
+
+        converted = {}
+        for key, value in filter_dict.items():
+            if isinstance(value, dict) and "$eq" in value:
+                converted[key] = {"$eq": value["$eq"]}
+            else:
+                converted[key] = value
+        return converted
 
     # ===========================
     # RETRIEVAL / QUERYING
@@ -32,6 +54,9 @@ class RetrievalService:
         k=3,
         subject=None,
         chapter=None,
+        class_id=None,
+        teacher_id=None,
+        subject_id=None,
         include_neighbors=True
     ):
         """
@@ -40,20 +65,27 @@ class RetrievalService:
         user_id is REQUIRED to prevent cross-user retrieval.
         """
         db = self._get_db()
-        prefixed_question = f"query: {question}"
 
         # ---------------------------
         # BUILD FILTER (CRITICAL)
         # ---------------------------
         user_id_str = str(user_id)
-        filter_clauses = [
-            {"user_id": {"$eq": user_id_str}}
-        ]
+        filter_clauses = []
+
+        # Class scope takes precedence for shared teacher-uploaded content.
+        if class_id:
+            filter_clauses.append({"class_id": {"$eq": str(class_id)}})
+        else:
+            filter_clauses.append({"user_id": {"$eq": user_id_str}})
 
         if subject:
             filter_clauses.append({"subject": {"$eq": subject}})
         if chapter:
             filter_clauses.append({"chapter": {"$eq": chapter}})
+        if teacher_id:
+            filter_clauses.append({"teacher_id": {"$eq": str(teacher_id)}})
+        if subject_id:
+            filter_clauses.append({"subject_id": {"$eq": str(subject_id)}})
 
         # Only use $and if we have multiple filter clauses
         # ChromaDB requires $and to have at least 2 conditions
@@ -62,7 +94,6 @@ class RetrievalService:
         else:
             filter_dict = filter_clauses[0]
         
-        # Debug logging
         print(f"🔍 RAG Query:")
         print(f"   Question: {question}")
         print(f"   User ID: {user_id_str}")
@@ -73,124 +104,38 @@ class RetrievalService:
         # ---------------------------
         # SIMILARITY SEARCH
         # ---------------------------
-        try:
-            results = db.similarity_search_with_score(
-                prefixed_question,
-                k=k,
-                filter=filter_dict
-            )
-        except Exception as e:
-            print(f"❌ ChromaDB filter error: {e}")
-            print(f"   Retrying without subject/chapter filters...")
-            # Fallback: try without subject/chapter filters
-            filter_dict = {"$and": [{"user_id": {"$eq": user_id_str}}]}
-            results = db.similarity_search_with_score(
-                prefixed_question,
-                k=k,
-                filter=filter_dict
-            )
-        
-        print(f"   Found {len(results)} results from ChromaDB")
+        pinecone_results = db.search_text(
+            query=question,
+            top_k=k,
+            metadata_filter=self._to_pinecone_filter(filter_dict),
+        )
+        results = []
+        for hit in pinecone_results:
+            results.append((hit, hit.get("score", 0.0)))
+        print(f"   Found {len(results)} results from Pinecone")
 
         processed_results = []
-        seen_chunk_ids = set()
 
-        for doc, distance in results:
-            confidence = max(0, 1 - distance)
-            content = doc.page_content
+        for result_obj, raw_score in results:
+            metadata = result_obj.get("metadata", {})
+            content = result_obj.get("text") or metadata.get("text", "")
+            chunk_id = result_obj.get("id") or metadata.get("chunk_id", "unknown")
+            confidence = max(0.0, min(1.0, float(raw_score or 0.0)))
 
-            if content.startswith("passage: "):
-                content = content[9:]
-
-            chunk_id = doc.metadata.get("chunk_id", "unknown")
-            
-            print(f"   ✓ Result: {chunk_id[:8]}... (confidence: {confidence:.4f})")
-            print(f"     Metadata: subject={doc.metadata.get('subject')}, chapter={doc.metadata.get('chapter')}, user_id={doc.metadata.get('user_id')}")
+            print(f"   ✓ Result: {str(chunk_id)[:8]}... (confidence: {confidence:.4f})")
+            print(
+                "     Metadata: "
+                f"subject={metadata.get('subject')}, "
+                f"chapter={metadata.get('chapter')}, "
+                f"user_id={metadata.get('user_id')}, "
+                f"class_id={metadata.get('class_id')}"
+            )
 
             processed_results.append({
                 "content": content,
-                "metadata": doc.metadata,
+                "metadata": metadata,
                 "confidence": round(confidence, 4),
                 "chunk_id": chunk_id
             })
 
-            seen_chunk_ids.add(chunk_id)
-
-        # ---------------------------
-        # NEIGHBOR FETCHING
-        # ---------------------------
-        if include_neighbors and processed_results:
-            neighbors = self._fetch_neighbor_pages(
-                processed_results,
-                filter_dict
-            )
-            for n in neighbors:
-                if n["chunk_id"] not in seen_chunk_ids:
-                    processed_results.append(n)
-
         return processed_results
-
-    def _fetch_neighbor_pages(self, results, filters):
-        """
-        Fetch p-1 and p+1 pages with SAME FILTERS (user-safe).
-        """
-        db = self._get_db()
-        neighbors = []
-        seen_chunk_ids = {r["chunk_id"] for r in results}
-
-        for result in results:
-            metadata = result["metadata"]
-            source = metadata.get("source")
-            current_page = metadata.get("page")
-
-            if not source or current_page is None:
-                continue
-
-            for neighbor_page in (current_page - 1, current_page + 1):
-                if neighbor_page < 1:
-                    continue
-
-                neighbor_clauses = [
-                    {"source": {"$eq": source}},
-                    {"page": {"$eq": neighbor_page}},
-                ]
-
-                # Inherit ALL original filters (user_id, subject, chapter)
-                if filters and "$and" in filters:
-                    neighbor_clauses.extend(filters["$and"])
-
-                neighbor_filter = {"$and": neighbor_clauses}
-
-                try:
-                    neighbor_docs = db.get(
-                        where=neighbor_filter,
-                        limit=1
-                    )
-
-                    if not neighbor_docs or not neighbor_docs.get("documents"):
-                        continue
-
-                    content = neighbor_docs["documents"][0]
-                    metadata = neighbor_docs.get("metadatas", [{}])[0]
-
-                    chunk_id = metadata.get("chunk_id", "unknown")
-                    if chunk_id in seen_chunk_ids:
-                        continue
-
-                    if isinstance(content, str) and content.startswith("passage: "):
-                        content = content[9:]
-
-                    neighbors.append({
-                        "content": content,
-                        "metadata": metadata,
-                        "confidence": round(result["confidence"] * 0.8, 4),
-                        "chunk_id": chunk_id,
-                        "is_neighbor": True
-                    })
-
-                    seen_chunk_ids.add(chunk_id)
-
-                except Exception as e:
-                    print(f"Warning: Neighbor fetch failed: {e}")
-
-        return neighbors

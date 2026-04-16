@@ -12,7 +12,7 @@ Provides:
 
 from datetime import datetime, timedelta
 from typing import Optional
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, status, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from jose import JWTError, jwt
 from bson import ObjectId
@@ -71,6 +71,7 @@ def verify_token(token: str) -> dict:
 # ============================
 
 async def get_current_user(
+    request: Request,
     credentials: HTTPAuthorizationCredentials = Depends(security)
 ) -> dict:
     """
@@ -112,12 +113,25 @@ async def get_current_user(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="User account is deactivated"
         )
+
+    allowed_when_password_change_required = {
+        "/api/v1/auth/change-password",
+    }
+
+    if user.must_change_password and request.url.path not in allowed_when_password_change_required:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Password change required before accessing this resource"
+        )
     
     return {
         "id": str(user.id),
+        "username": user.username,
         "email": user.email,
         "name": user.name,
-        "role": user.role
+        "role": user.role,
+        "class_id": user.class_id,
+        "must_change_password": user.must_change_password,
     }
 
 
@@ -129,6 +143,7 @@ async def get_current_active_user(
 
 
 async def get_optional_user(
+    request: Request,
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(
         HTTPBearer(auto_error=False)
     )
@@ -141,7 +156,7 @@ async def get_optional_user(
         return None
     
     try:
-        return await get_current_user(credentials)
+        return await get_current_user(request=request, credentials=credentials)
     except HTTPException:
         return None
 

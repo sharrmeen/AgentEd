@@ -261,6 +261,8 @@ async def run_workflow(
     chapter_number: int = None,
     session_id: str = None,
     intent: str = "answer",
+    class_id: str = None,
+    role: str = None,
     constraints: dict = None,
     quiz_results: dict = None,
     **kwargs
@@ -275,6 +277,8 @@ async def run_workflow(
         chapter_number: Chapter context
         session_id: Session identifier
         intent: Intent type - 'answer' (default) | 'explain' | 'summarize'
+        class_id: Optional class scope for class-shared retrieval
+        role: User role (admin | teacher | student)
         constraints: Planning constraints
         quiz_results: Quiz results data
         
@@ -284,6 +288,8 @@ async def run_workflow(
     
     initial_state = AgentEdState(
         user_id=user_id,
+        class_id=class_id,
+        role=role,
         user_query=user_query,
         intent=intent,
         subject_id=subject_id,

@@ -137,7 +137,7 @@ export default function SettingsPage() {
   })
 
   return (
-    <AuthGuard>
+    <AuthGuard allowedRoles={["student", "teacher"]}>
       <div className="min-h-screen bg-background">
         <Navbar />
         <main className="container mx-auto max-w-2xl px-4 py-8">

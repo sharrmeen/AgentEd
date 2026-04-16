@@ -6,8 +6,11 @@ import hashlib
 import uuid
 import asyncio
 from functools import wraps
-from langchain_chroma import Chroma
+from bson import ObjectId
+
+from app.core.config import settings
 from app.services.embedding_service import get_embedding_model
+from app.services.pinecone_service import PineconeService
 from langchain_experimental.text_splitter import SemanticChunker
 from langchain_community.document_loaders import UnstructuredWordDocumentLoader, UnstructuredPDFLoader
 from langchain_core.documents import Document
@@ -52,12 +55,16 @@ class IngestionService:
     - Persisting documents to vector database with traceability
     """
     
-    def __init__(self, db_directory="./chroma_db", subject=None, chapter=None,user_id=None):
-        # Ensure db_directory exists and is absolute path
-        self.db_directory = os.path.abspath(db_directory)
-        os.makedirs(self.db_directory, exist_ok=True)
-        print(f"📁 ChromaDB directory: {self.db_directory}")
-        
+    def __init__(
+        self,
+        subject=None,
+        chapter=None,
+        user_id=None,
+        class_id: str | None = None,
+        teacher_id: ObjectId | None = None,
+        subject_id: ObjectId | None = None,
+        role: str = "student",
+    ):
         self.embedding_model = get_embedding_model()
 
         
@@ -65,26 +72,20 @@ class IngestionService:
         self.subject = subject
         self.chapter = chapter
         self.user_id = str(user_id) if user_id else None
+        self.class_id = class_id
+        self.teacher_id = str(teacher_id) if teacher_id else None
+        self.subject_id = str(subject_id) if subject_id else None
+        self.role = role
+        self.vector_provider = settings.VECTOR_DB_PROVIDER.lower().strip()
+        if self.vector_provider != "pinecone":
+            raise ValueError("VECTOR_DB_PROVIDER must be 'pinecone' in cloud runtime")
         print(f"🔐 IngestionService initialized with user_id: {self.user_id} (original type: {type(user_id).__name__})")
         # Configuration from environment variables with defaults
         self.MAX_CHUNK_SIZE = int(os.getenv("MAX_CHUNK_SIZE", "1200"))
         
     def _get_db(self):
-        """Internal helper to load the database with persistence."""
-        try:
-            print(f"🔄 Connecting to ChromaDB at {self.db_directory}...")
-            db = Chroma(
-                persist_directory=self.db_directory,
-                embedding_function=self.embedding_model,
-                collection_name="rag_knowledge_base"
-            )
-            print("✅ ChromaDB connected successfully")
-            return db
-        except Exception as e:
-            print(f"❌ ChromaDB connection failed: {str(e)}")
-            import traceback
-            traceback.print_exc()
-            raise
+        """Internal helper to load Pinecone client."""
+        return PineconeService()
 
     # ===========================
     # PUBLIC INGESTION API
@@ -142,6 +143,14 @@ class IngestionService:
                 doc.metadata["chapter"] = self.chapter
             if self.user_id:
                 doc.metadata["user_id"] = self.user_id
+            if self.class_id:
+                doc.metadata["class_id"] = self.class_id
+            if self.teacher_id:
+                doc.metadata["teacher_id"] = self.teacher_id
+            if self.role:
+                doc.metadata["role"] = self.role
+            if self.subject_id:
+                doc.metadata["subject_id"] = self.subject_id
         
         return self._process_documents(documents, source=file_path)
 
@@ -206,6 +215,14 @@ class IngestionService:
                     doc.metadata["chapter"] = self.chapter
                 if self.user_id:
                     doc.metadata["user_id"] = self.user_id
+                if self.class_id:
+                    doc.metadata["class_id"] = self.class_id
+                if self.teacher_id:
+                    doc.metadata["teacher_id"] = self.teacher_id
+                if self.role:
+                    doc.metadata["role"] = self.role
+                if self.subject_id:
+                    doc.metadata["subject_id"] = self.subject_id
             
             return self._process_documents(documents, source=file_path)
         except Exception as e:
@@ -289,7 +306,11 @@ class IngestionService:
                         "file_type": "pdf_scanned",
                         "subject": self.subject,
                         "chapter": self.chapter,
-                        "user_id": self.user_id
+                        "user_id": self.user_id,
+                        "class_id": self.class_id,
+                        "teacher_id": self.teacher_id,
+                        "subject_id": self.subject_id,
+                        "role": self.role,
                     }
                 )
                 return doc
@@ -335,7 +356,11 @@ class IngestionService:
                     "file_type": "image",
                     "subject": self.subject,
                     "chapter": self.chapter,
-                    "user_id": self.user_id
+                    "user_id": self.user_id,
+                    "class_id": self.class_id,
+                    "teacher_id": self.teacher_id,
+                    "subject_id": self.subject_id,
+                    "role": self.role,
                 }
             )
             
@@ -409,10 +434,25 @@ class IngestionService:
             chunks_with_ids.append(chunk)
         
         # Add to database
-        print(f"Saving {len(chunks_with_ids)} chunks to Vector DB...")
+        print(f"Saving {len(chunks_with_ids)} chunks to Vector DB ({self.vector_provider})...")
         db = self._get_db()
-        db.add_documents(chunks_with_ids)
-        print("Database saved successfully (auto-persisted by Chroma).")
+
+        records = []
+        for chunk in chunks_with_ids:
+            text = chunk.page_content
+            if text.startswith("passage: "):
+                text = text[9:]
+
+            records.append(
+                {
+                    "_id": chunk.metadata["chunk_id"],
+                    "text": text,
+                    "metadata": chunk.metadata,
+                }
+            )
+
+        db.upsert_text_records(records)
+        print("Database saved successfully (Pinecone upsert_records).")
         
         return f"Successfully ingested {len(chunks_with_ids)} unique chunks from {source}."
 

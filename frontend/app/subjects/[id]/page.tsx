@@ -7,6 +7,7 @@ import { useRouter, useParams } from "next/navigation"
 import { AuthGuard } from "@/components/auth-guard"
 import { Navbar } from "@/components/navbar"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { LoadingSpinner } from "@/components/loading-spinner"
@@ -15,6 +16,11 @@ import { ArrowLeft, Upload, Sparkles, CheckCircle2, Circle, Play, BookOpen } fro
 import Link from "next/link"
 import { Progress } from "@/components/ui/progress"
 import { api } from "@/lib/api"
+import { auth } from "@/lib/auth"
+import { Label } from "@/components/ui/label"
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { getSubjectDifficulty, setSubjectDifficulty, type SubjectDifficulty } from "@/lib/study-preferences"
 
 // Backend response types
 interface BackendSubject {
@@ -56,6 +62,14 @@ interface PlannerState {
   updated_at: string
 }
 
+interface ClassListResponse {
+  classes: Array<{
+    id: string
+    name: string
+    section?: string | null
+  }>
+}
+
 // Frontend display types
 interface Subject {
   id: string
@@ -79,24 +93,64 @@ export default function SubjectDetailPage() {
   const router = useRouter()
   const params = useParams()
   const { toast } = useToast()
+  const user = auth.getUser()
+  const role = user?.role || "student"
+  const isTeacher = role === "teacher"
+  const isStudent = role === "student"
+  const homeHref = auth.getDefaultRoute()
+  const subjectId = String(params.id)
   const [isLoading, setIsLoading] = useState(true)
   const [subject, setSubject] = useState<Subject | null>(null)
   const [chapters, setChapters] = useState<Chapter[]>([])
   const [isUploading, setIsUploading] = useState(false)
+  const [isNotesUploading, setIsNotesUploading] = useState(false)
+  const [teacherClassId, setTeacherClassId] = useState<string>("")
+  const [teacherChapter, setTeacherChapter] = useState("")
+  const [teacherNotesFile, setTeacherNotesFile] = useState<File | null>(null)
+  const [teacherClasses, setTeacherClasses] = useState<Array<{ id: string; name: string; section?: string | null }>>([])
+  const [difficultyModalOpen, setDifficultyModalOpen] = useState(false)
+  const [selectedDifficulty, setSelectedDifficulty] = useState<SubjectDifficulty>("intermediate")
   const [activeTab, setActiveTab] = useState<"overview" | "study-plan">("overview")
 
   useEffect(() => {
-    if (params.id) {
+    if (subjectId) {
       fetchSubjectData()
     }
-  }, [params.id])
+  }, [subjectId])
+
+  useEffect(() => {
+    if (!subject || !isStudent) return
+    const saved = getSubjectDifficulty(subject.id)
+    if (saved) {
+      setSelectedDifficulty(saved)
+      return
+    }
+    setDifficultyModalOpen(true)
+  }, [subject, isStudent])
+
+  useEffect(() => {
+    if (!isTeacher) return
+    fetchTeacherClasses()
+  }, [isTeacher])
+
+  const fetchTeacherClasses = async () => {
+    try {
+      const response = await api.get<ClassListResponse>("/api/v1/classes/teacher/me")
+      setTeacherClasses(response.classes || [])
+      if (response.classes?.length) {
+        setTeacherClassId(response.classes[0].id)
+      }
+    } catch {
+      // Class list is optional for subject viewing.
+    }
+  }
 
   const fetchSubjectData = async () => {
     try {
       setIsLoading(true)
       
       // Fetch subject details
-      const backendSubject = await api.get<BackendSubject>(`/api/v1/subjects/${params.id}`)
+      const backendSubject = await api.get<BackendSubject>(`/api/v1/subjects/${subjectId}`)
       
       // Transform to frontend format
       const transformedSubject: Subject = {
@@ -112,7 +166,7 @@ export default function SubjectDetailPage() {
       // If plan exists, fetch planner state for progress info
       if (transformedSubject.study_plan_generated && backendSubject.plan?.chapters) {
         try {
-          const plannerState = await api.get<PlannerState>(`/api/v1/planner/${params.id}`)
+          const plannerState = await api.get<PlannerState>(`/api/v1/planner/${subjectId}`)
           
           // Transform chapters with progress info
           const transformedChapters: Chapter[] = backendSubject.plan.chapters.map((ch) => {
@@ -172,7 +226,7 @@ export default function SubjectDetailPage() {
     setIsUploading(true)
 
     try {
-      await api.uploadFile(`/api/v1/syllabus/${params.id}/upload`, file)
+      await api.uploadFile(`/api/v1/syllabus/${subjectId}/upload`, file)
       
       toast({
         title: "Syllabus uploaded!",
@@ -190,9 +244,61 @@ export default function SubjectDetailPage() {
     }
   }
 
+  const handleSaveDifficulty = () => {
+    if (!subject) return
+    setSubjectDifficulty(subject.id, selectedDifficulty)
+    setDifficultyModalOpen(false)
+    toast({
+      title: "Difficulty preference saved",
+      description: `We'll generate content at ${selectedDifficulty} level for this subject.`,
+    })
+  }
+
+  const handleTeacherNotesUpload = async () => {
+    if (!teacherNotesFile || !teacherChapter.trim()) {
+      toast({
+        title: "Missing details",
+        description: "Please select a file and chapter name before uploading notes.",
+        variant: "destructive",
+      })
+      return
+    }
+
+    if (!teacherClassId) {
+      toast({
+        title: "Select a class",
+        description: "Teacher notes need a class assignment.",
+        variant: "destructive",
+      })
+      return
+    }
+
+    setIsNotesUploading(true)
+    try {
+      await api.uploadFile(`/api/v1/notes/${subjectId}/upload`, teacherNotesFile, {
+        chapter: teacherChapter.trim(),
+        class_id: teacherClassId,
+      })
+      setTeacherNotesFile(null)
+      setTeacherChapter("")
+      toast({
+        title: "Notes uploaded",
+        description: "Notes were stored and queued for vector ingestion.",
+      })
+    } catch (error) {
+      toast({
+        title: "Notes upload failed",
+        description: error instanceof Error ? error.message : "Unable to upload notes",
+        variant: "destructive",
+      })
+    } finally {
+      setIsNotesUploading(false)
+    }
+  }
+
   if (isLoading) {
     return (
-      <AuthGuard>
+      <AuthGuard allowedRoles={["student", "teacher"]}>
         <div className="min-h-screen bg-background">
           <Navbar />
           <div className="flex min-h-[60vh] items-center justify-center">
@@ -205,7 +311,7 @@ export default function SubjectDetailPage() {
 
   if (!subject) {
     return (
-      <AuthGuard>
+      <AuthGuard allowedRoles={["student", "teacher"]}>
         <div className="min-h-screen bg-background">
           <Navbar />
           <div className="container mx-auto px-4 py-8">
@@ -225,15 +331,15 @@ export default function SubjectDetailPage() {
   const overallProgress = totalObjectives > 0 ? Math.round((completedObjectives / totalObjectives) * 100) : 0
 
   return (
-    <AuthGuard>
+    <AuthGuard allowedRoles={["student", "teacher"]}>
       <div className="min-h-screen bg-background">
         <Navbar />
         <main className="container mx-auto px-4 py-8">
           <div className="mb-6">
-            <Link href="/dashboard">
+            <Link href={homeHref}>
               <Button variant="ghost" className="gap-2">
                 <ArrowLeft className="h-4 w-4" />
-                Back to Dashboard
+                Back
               </Button>
             </Link>
           </div>
@@ -259,7 +365,9 @@ export default function SubjectDetailPage() {
                       <Upload className="h-5 w-5" />
                       Syllabus
                     </CardTitle>
-                    <CardDescription>Upload your course syllabus to get started</CardDescription>
+                    <CardDescription>
+                      {isTeacher ? "Upload and update your course syllabus" : "Teacher-provided syllabus status"}
+                    </CardDescription>
                   </CardHeader>
                   <CardContent>
                     {subject.syllabus_uploaded ? (
@@ -267,6 +375,8 @@ export default function SubjectDetailPage() {
                         <CheckCircle2 className="h-5 w-5" />
                         <span className="font-medium">Syllabus uploaded</span>
                       </div>
+                    ) : !isTeacher ? (
+                      <p className="text-sm text-muted-foreground">Your teacher will upload the syllabus for this subject.</p>
                     ) : (
                       <div className="space-y-3">
                         <p className="text-sm text-muted-foreground">Supported formats: PDF, DOCX, TXT (max 10MB)</p>
@@ -303,13 +413,62 @@ export default function SubjectDetailPage() {
                 <Card>
                   <CardHeader>
                     <CardTitle className="flex items-center gap-2">
-                      <Sparkles className="h-5 w-5" />
-                      Study Plan
+                      {isTeacher ? <Upload className="h-5 w-5" /> : <Sparkles className="h-5 w-5" />}
+                      {isTeacher ? "Class Notes" : "Study Plan"}
                     </CardTitle>
-                    <CardDescription>AI-generated learning roadmap</CardDescription>
+                    <CardDescription>
+                      {isTeacher ? "Upload chapter notes for student retrieval" : "AI-generated learning roadmap"}
+                    </CardDescription>
                   </CardHeader>
                   <CardContent>
-                    {subject.study_plan_generated ? (
+                    {isTeacher ? (
+                      <div className="space-y-3">
+                        <div className="space-y-2">
+                          <Label htmlFor="class-id">Class</Label>
+                          <Select value={teacherClassId} onValueChange={setTeacherClassId}>
+                            <SelectTrigger id="class-id">
+                              <SelectValue placeholder="Select class" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {teacherClasses.map((classItem) => (
+                                <SelectItem key={classItem.id} value={classItem.id}>
+                                  {classItem.name}{classItem.section ? ` - ${classItem.section}` : ""}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="teacher-chapter">Chapter</Label>
+                          <Input
+                            id="teacher-chapter"
+                            value={teacherChapter}
+                            onChange={(event) => setTeacherChapter(event.target.value)}
+                            placeholder="e.g., Chapter 3: Thermodynamics"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="teacher-notes">Notes File</Label>
+                          <Input
+                            id="teacher-notes"
+                            type="file"
+                            accept=".pdf,.docx,image/*"
+                            onChange={(event) => setTeacherNotesFile(event.target.files?.[0] || null)}
+                          />
+                        </div>
+                        <Button
+                          onClick={handleTeacherNotesUpload}
+                          disabled={isNotesUploading || !teacherClasses.length}
+                          className="w-full gap-2"
+                        >
+                          {isNotesUploading ? <LoadingSpinner size="sm" /> : <Upload className="h-4 w-4" />}
+                          Upload Notes
+                        </Button>
+                        {!teacherClasses.length && (
+                          <p className="text-xs text-muted-foreground">Assign at least one class to upload teacher notes.</p>
+                        )}
+                      </div>
+                    ) : subject.study_plan_generated ? (
                       <div className="space-y-3">
                         <div className="flex items-center gap-2 text-accent">
                           <CheckCircle2 className="h-5 w-5" />
@@ -328,7 +487,7 @@ export default function SubjectDetailPage() {
                         <p className="text-sm text-muted-foreground">Generate a personalized study plan</p>
                         <Button
                           className="w-full gap-2"
-                          onClick={() => router.push(`/subjects/${params.id}/generate-plan`)}
+                          onClick={() => router.push(`/subjects/${subjectId}/generate-plan`)}
                         >
                           <Sparkles className="h-4 w-4" />
                           Generate Plan
@@ -353,10 +512,10 @@ export default function SubjectDetailPage() {
                       <p className="text-sm text-muted-foreground">Create and practice quizzes based on the material</p>
                       <Button
                         className="w-full gap-2"
-                        onClick={() => router.push(`/subjects/${params.id}/quizzes`)}
+                        onClick={() => router.push(`/subjects/${subjectId}/quizzes`)}
                       >
                         <BookOpen className="h-4 w-4" />
-                        Go to Quizzes
+                        {isTeacher ? "Take Quiz" : "Go to Quizzes"}
                       </Button>
                     </div>
                   </CardContent>
@@ -407,7 +566,7 @@ export default function SubjectDetailPage() {
                         : "Upload a syllabus first to generate a study plan"}
                     </p>
                     {subject.syllabus_uploaded && (
-                      <Button className="gap-2" onClick={() => router.push(`/subjects/${params.id}/generate-plan`)}>
+                      <Button className="gap-2" onClick={() => router.push(`/subjects/${subjectId}/generate-plan`)}>
                         <Sparkles className="h-4 w-4" />
                         Generate Study Plan
                       </Button>
@@ -439,7 +598,7 @@ export default function SubjectDetailPage() {
                               size="sm"
                               className="gap-2 bg-transparent"
                               onClick={() =>
-                                router.push(`/subjects/${params.id}/study?chapter=${chapter.chapter_number}`)
+                                router.push(`/subjects/${subjectId}/study?chapter=${chapter.chapter_number}`)
                               }
                             >
                               <Play className="h-4 w-4" />
@@ -463,9 +622,9 @@ export default function SubjectDetailPage() {
                                 return (
                                   <li key={idx} className="flex items-start gap-2 text-sm">
                                     {isCompleted ? (
-                                      <CheckCircle2 className="mt-0.5 h-4 w-4 flex-shrink-0 text-accent" />
+                                      <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-accent" />
                                     ) : (
-                                      <Circle className="mt-0.5 h-4 w-4 flex-shrink-0 text-muted-foreground" />
+                                      <Circle className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
                                     )}
                                     <span className={isCompleted ? "text-muted-foreground" : ""}>{objective}</span>
                                   </li>
@@ -481,6 +640,38 @@ export default function SubjectDetailPage() {
               )}
             </TabsContent>
           </Tabs>
+
+          <Dialog open={difficultyModalOpen} onOpenChange={setDifficultyModalOpen}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Select Difficulty</DialogTitle>
+                <DialogDescription>
+                  Choose your preferred learning difficulty for this subject. You can change this later from plan or quiz pages.
+                </DialogDescription>
+              </DialogHeader>
+
+              <div className="space-y-2">
+                <Label htmlFor="subject-difficulty">Difficulty</Label>
+                <Select
+                  value={selectedDifficulty}
+                  onValueChange={(value) => setSelectedDifficulty(value as SubjectDifficulty)}
+                >
+                  <SelectTrigger id="subject-difficulty">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="easy">Easy</SelectItem>
+                    <SelectItem value="intermediate">Intermediate</SelectItem>
+                    <SelectItem value="difficult">Difficult</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <DialogFooter>
+                <Button onClick={handleSaveDifficulty}>Save Preference</Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
         </main>
       </div>
     </AuthGuard>

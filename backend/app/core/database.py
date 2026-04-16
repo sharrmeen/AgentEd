@@ -1,13 +1,13 @@
-import os
 from motor.motor_asyncio import AsyncIOMotorClient
 from pymongo import ASCENDING, DESCENDING
+from app.core.config import settings
 
 # ========================
 # MongoDB Configuration
 # ========================
 
-MONGODB_URI = os.getenv("MONGODB_URI", "mongodb://localhost:27017")
-DB_NAME = os.getenv("DB_NAME", "agented_db")
+MONGODB_URI = settings.MONGODB_URI
+DB_NAME = settings.DB_NAME
 
 
 # ========================
@@ -87,6 +87,10 @@ class Database:
 
     def quizzes(self):
         return self.db["quizzes"]
+
+    def classes(self):
+        """Collection for class management."""
+        return self.db["classes"]
     
     def notes(self):
         """Collection for note metadata."""
@@ -125,10 +129,50 @@ async def init_indexes():
     dbi = db.get_db()
 
     # ---------- users ----------
+    try:
+        await dbi["users"].drop_index("unique_user_email")
+    except Exception:
+        pass
+    try:
+        await dbi["users"].drop_index("unique_user_email_sparse")
+    except Exception:
+        pass
+    try:
+        await dbi["users"].drop_index("unique_user_email_active")
+    except Exception:
+        pass
+
+    # Normalize legacy data so sparse unique index ignores missing emails.
+    await dbi["users"].update_many({"email": None}, {"$unset": {"email": ""}})
+    await dbi["users"].update_many({"email": ""}, {"$unset": {"email": ""}})
+
+    await dbi["users"].create_index(
+        [("username", ASCENDING)],
+        unique=True,
+        name="unique_user_username"
+    )
+
     await dbi["users"].create_index(
         [("email", ASCENDING)],
         unique=True,
-        name="unique_user_email"
+        sparse=True,
+        name="unique_user_email_sparse"
+    )
+
+    await dbi["users"].create_index(
+        [("class_id", ASCENDING), ("role", ASCENDING)],
+        name="users_by_class_role"
+    )
+
+    # ---------- classes ----------
+    await dbi["classes"].create_index(
+        [("name", ASCENDING), ("section", ASCENDING)],
+        name="classes_by_name_section"
+    )
+
+    await dbi["classes"].create_index(
+        [("teacher_id", ASCENDING), ("is_active", ASCENDING)],
+        name="classes_by_teacher_active"
     )
 
     # ---------- subjects ----------
@@ -237,6 +281,16 @@ async def init_indexes():
     await dbi["notes"].create_index(
     [("subject_id", ASCENDING), ("chapter", ASCENDING)],
     name="notes_by_subject_chapter"
+    )
+
+    await dbi["notes"].create_index(
+        [("class_id", ASCENDING), ("subject_id", ASCENDING), ("chapter", ASCENDING)],
+        name="notes_by_class_subject_chapter"
+    )
+
+    await dbi["notes"].create_index(
+        [("teacher_id", ASCENDING), ("class_id", ASCENDING)],
+        name="notes_by_teacher_class"
     )
     # ---------- feedback_reports ----------
     await dbi["feedback_reports"].create_index(

@@ -28,6 +28,7 @@ from app.core.models.user import SubjectProfile, LearningProfile
 from app.services.quiz_service import QuizService
 from app.services.planner_service import PlannerService
 from app.services.retrieval import RetrievalService
+from app.services.user_service import UserService
 
 
 class FeedbackService:
@@ -416,6 +417,9 @@ class FeedbackService:
         
         revision_items = []
         retrieval_service = RetrievalService()
+        user = await UserService.get_user_by_id(user_id)
+        class_id = user.class_id if user else None
+        teacher_id = str(user_id) if user and user.role == "teacher" else None
         
         for concept in weak_concepts[:5]:  # Top 5 weak concepts
             # Try to find relevant content
@@ -423,6 +427,9 @@ class FeedbackService:
                 results = retrieval_service.query(
                     question=f"Content about {concept}",
                     user_id=str(user_id),
+                    class_id=class_id,
+                    teacher_id=teacher_id,
+                    subject_id=str(subject_id),
                     chapter=str(quiz.chapter_number) if quiz.chapter_number else None,
                     k=1
                 )

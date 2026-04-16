@@ -27,18 +27,14 @@ run.bat
 
 ### Step 4: Open Browser (1 min)
 - Frontend: http://localhost:3000
-- API Docs: http://localhost:8000/api/docs
+- API Docs: /api/docs
 
 ---
 
 ## Troubleshooting (Quick Fixes)
 
 ### "MongoDB connection failed"
-**Fix**: Start MongoDB in another terminal:
-```bash
-mongod
-```
-Or use MongoDB Atlas (cloud) - update `MONGODB_URI` in `backend\.env`
+**Fix**: Verify `MONGODB_URI` in `backend\.env` points to your MongoDB Atlas cluster and credentials are valid.
 
 ### "Port 3000/8000 already in use"
 **Fix**: Kill the process or use different ports in the code

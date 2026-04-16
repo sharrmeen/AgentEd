@@ -27,6 +27,7 @@ from app.agents.orchestration.state import AgentEdState
 from app.services.retrieval import RetrievalService
 from app.services.chat_memory_service import ChatMemoryService
 from app.services.subject_service import SubjectService
+from app.services.user_service import UserService
 
 from dotenv import load_dotenv
 
@@ -80,7 +81,7 @@ def cache_lookup(user_id: str, session_id: str, question: str, intent: str = "an
 
 
 # Helper function - NOT a tool (called directly, not by agent)
-def rag_retriever(user_id: str, question: str, subject: str = None) -> str:
+def rag_retriever(user_id: str, question: str, subject: str = None, class_id: str = None) -> str:
     """
     Retrieve information from uploaded notes and study materials.
     
@@ -91,6 +92,7 @@ def rag_retriever(user_id: str, question: str, subject: str = None) -> str:
         log_print(f"   user_id: {user_id} (type: {type(user_id).__name__})")
         log_print(f"   question: {question}")
         log_print(f"   subject: {subject}")
+        log_print(f"   class_id: {class_id}")
         
         retrieval_service = RetrievalService()
         
@@ -99,6 +101,7 @@ def rag_retriever(user_id: str, question: str, subject: str = None) -> str:
         results = retrieval_service.query(
             question=question,
             user_id=user_id,
+            class_id=class_id,
             subject=subject,  # Filter by subject if provided
             chapter=None,  # Search all chapters within subject
             k=5
@@ -219,6 +222,7 @@ async def resource_agent_node(state: AgentEdState) -> Dict:
         log_print(f"🔍 State keys: {list(state.keys())}")
         
         user_id = state["user_id"]
+        class_id = state.get("class_id")
         subject_id = state.get("subject_id")
         session_id = state.get("session_id")
         question = state["user_query"]
@@ -239,6 +243,13 @@ async def resource_agent_node(state: AgentEdState) -> Dict:
                 log_print(f"✅ Got subject: {subject_name}")
             except Exception as subject_error:
                 log_print(f"⚠️ Subject lookup error: {type(subject_error).__name__}: {subject_error}")
+
+        if not class_id:
+            try:
+                user = await UserService.get_user_by_id(ObjectId(user_id))
+                class_id = user.class_id if user else None
+            except Exception:
+                class_id = None
         
         log_print(f"🔧 Building system prompt for intent: {intent}")
         # Build INTENT-SPECIFIC system prompt
@@ -295,7 +306,8 @@ Minimize tool calls - stop as soon as you have enough information."""
             rag_result = rag_retriever(
                 user_id=user_id,
                 question=question,
-                subject=subject_name
+                subject=subject_name,
+                class_id=class_id
             )
             log_print(f"  RAG result length: {len(rag_result) if rag_result else 0}")
             
@@ -322,7 +334,6 @@ Provide a comprehensive answer based on the context above.""")
                     log_print(f"  Raw response type: {type(response).__name__}")
                     log_print(f"  Raw response dir: {[attr for attr in dir(response) if not attr.startswith('_')]}")
                     
-                    # Debug: Print all attributes of the response
                     if hasattr(response, 'content'):
                         log_print(f"  response.content = '{response.content}' (type: {type(response.content)})")
                     if hasattr(response, 'text'):
@@ -330,7 +341,6 @@ Provide a comprehensive answer based on the context above.""")
                     if hasattr(response, 'response_metadata'):
                         log_print(f"  response.response_metadata = {response.response_metadata}")
                     
-                    # Extract content from response - try multiple approaches
                     answer = None
                     
                     if isinstance(response, str):

@@ -10,15 +10,20 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { GraduationCap, User, BarChart3, Settings, LogOut, Moon, Sun, FileText } from "lucide-react"
+import { GraduationCap, User, BarChart3, Settings, LogOut, Moon, Sun, FileText, Shield, Users } from "lucide-react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useEffect, useState } from "react"
+import { Badge } from "@/components/ui/badge"
 
 export function Navbar() {
   const router = useRouter()
-  const [user, setUser] = useState<{ name: string; email: string } | null>(null)
+  const [user, setUser] = useState<ReturnType<typeof auth.getUser>>(null)
   const [darkMode, setDarkMode] = useState(false)
+  const homeHref = auth.getDefaultRoute(user)
+  const isAdmin = user?.role === "admin"
+  const isTeacher = user?.role === "teacher"
+  const isStudent = user?.role === "student"
 
   useEffect(() => {
     setUser(auth.getUser())
@@ -44,9 +49,9 @@ export function Navbar() {
   }
 
   return (
-    <nav className="sticky top-0 z-50 border-b bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/60">
+    <nav className="sticky top-0 z-50 border-b bg-card/95 backdrop-blur supports-backdrop-filter:bg-card/60">
       <div className="container mx-auto flex h-16 items-center justify-between px-4">
-        <Link href="/dashboard" className="flex items-center gap-2">
+        <Link href={homeHref} className="flex items-center gap-2">
           <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-primary text-primary-foreground">
             <GraduationCap className="h-6 w-6" />
           </div>
@@ -72,26 +77,51 @@ export function Navbar() {
               <DropdownMenuLabel>
                 <div className="flex flex-col space-y-1">
                   <p className="text-sm font-medium">{user?.name}</p>
-                  <p className="text-xs text-muted-foreground">{user?.email}</p>
+                  <p className="text-xs text-muted-foreground">{user?.username}</p>
+                  <div>
+                    <Badge variant="outline" className="capitalize">
+                      {user?.role || "student"}
+                    </Badge>
+                  </div>
                 </div>
               </DropdownMenuLabel>
               <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={() => router.push("/profile")}>
-                <User className="mr-2 h-4 w-4" />
-                Profile
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => router.push("/notes")}>
-                <FileText className="mr-2 h-4 w-4" />
-                My Study Materials
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => router.push("/analytics")}>
-                <BarChart3 className="mr-2 h-4 w-4" />
-                Analytics
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => router.push("/settings")}>
-                <Settings className="mr-2 h-4 w-4" />
-                Settings
-              </DropdownMenuItem>
+              {user?.role === "admin" && (
+                <DropdownMenuItem onClick={() => router.push("/admin")}>
+                  <Shield className="mr-2 h-4 w-4" />
+                  Admin Console
+                </DropdownMenuItem>
+              )}
+              {user?.role === "teacher" && (
+                <DropdownMenuItem onClick={() => router.push("/teacher")}>
+                  <Users className="mr-2 h-4 w-4" />
+                  Teacher Console
+                </DropdownMenuItem>
+              )}
+              {!isAdmin && (
+                <DropdownMenuItem onClick={() => router.push("/profile")}>
+                  <User className="mr-2 h-4 w-4" />
+                  Profile
+                </DropdownMenuItem>
+              )}
+              {!isAdmin && (
+                <DropdownMenuItem onClick={() => router.push("/notes")}>
+                  <FileText className="mr-2 h-4 w-4" />
+                  {isTeacher ? "Study Materials" : "My Study Materials"}
+                </DropdownMenuItem>
+              )}
+              {isStudent && (
+                <DropdownMenuItem onClick={() => router.push("/analytics")}>
+                  <BarChart3 className="mr-2 h-4 w-4" />
+                  Analytics
+                </DropdownMenuItem>
+              )}
+              {!isAdmin && (
+                <DropdownMenuItem onClick={() => router.push("/settings")}>
+                  <Settings className="mr-2 h-4 w-4" />
+                  Settings
+                </DropdownMenuItem>
+              )}
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={handleLogout} className="text-destructive">
                 <LogOut className="mr-2 h-4 w-4" />

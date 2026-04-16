@@ -7,7 +7,7 @@ Enhanced with learning profile and performance tracking.
 
 from datetime import datetime
 from typing import List, Dict, Optional
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel
 from .base import MongoBaseModel, PyObjectId
 
 
@@ -18,8 +18,12 @@ from .base import MongoBaseModel, PyObjectId
 class UserCreate(BaseModel):
     """Schema for user registration."""
     name: str
-    email: EmailStr
+    username: str
+    email: Optional[str] = None
+    role: str = "student"
+    class_id: Optional[str] = None
     password: str
+    must_change_password: bool = True
 
 
 # ============================
@@ -90,11 +94,14 @@ class UserInDB(MongoBaseModel):
     
     # Authentication
     name: str
-    email: EmailStr
+    username: str
+    email: Optional[str] = None
     password_hash: str
+    must_change_password: bool = True
     
     # Authorization
     role: str = "student"  # "student" | "teacher" | "admin"
+    class_id: Optional[str] = None
     is_active: bool = True
     
     # Learning profile (enhanced)
@@ -117,7 +124,8 @@ class UserPublic(BaseModel):
     """Public user information (no sensitive data)."""
     id: str  # ObjectId as string
     name: str
-    email: EmailStr
+    username: str
+    email: Optional[str] = None
     role: str
     learning_profile: LearningProfile
     created_at: datetime

@@ -62,8 +62,8 @@ APP_NAME=AgentEd
 APP_VERSION=1.0.0
 DEBUG=true
 
-# MongoDB (use MongoDB Atlas or local instance)
-MONGODB_URI=mongodb://localhost:27017
+# MongoDB Atlas (required)
+MONGODB_URI=mongodb+srv://<username>:<password>@<cluster-url>/?retryWrites=true&w=majority
 DB_NAME=agented_db
 
 # API Keys (REQUIRED - Get from respective services)
@@ -74,15 +74,28 @@ GEMINI_MODEL=gemini-2.5-flash-lite
 # JWT Secret (generated, can keep as-is or regenerate)
 JWT_SECRET_KEY=your_jwt_secret_key
 
-# CORS Origins
-CORS_ORIGINS=["http://localhost:3000", "http://localhost:5173", "*"]
+# App URL / CORS / Hosts
+APP_URL_BASE=https://app.yourdomain.com
+CORS_ORIGINS=["https://app.yourdomain.com"]
+ALLOWED_HOSTS=["api.yourdomain.com","app.yourdomain.com"]
 
-# ChromaDB Vector Storage
-CHROMA_PERSIST_DIRECTORY=./chroma_db
+# Pinecone Vector Storage
+VECTOR_DB_PROVIDER=pinecone
+PINECONE_API_KEY=your_pinecone_api_key
+PINECONE_INDEX=your_pinecone_index
+PINECONE_NAMESPACE=default
 MAX_CHUNK_SIZE=1200
 
+# Object Storage (S3-compatible)
+STORAGE_PROVIDER=s3
+S3_KEY=your_s3_key
+S3_SECRET=your_s3_secret
+S3_BUCKET=your_bucket
+S3_ENDPOINT=https://s3.your-region.backblazeb2.com
+S3_REGION=your-region
+S3_FORCE_PATH_STYLE=true
+
 # File Upload Settings
-UPLOAD_DIR=backend/data/users
 MAX_UPLOAD_SIZE=10485760  # 10 MB
 ALLOWED_EXTENSIONS=["pdf", "docx", "png", "jpg", "jpeg"]
 ```
@@ -96,9 +109,9 @@ ALLOWED_EXTENSIONS=["pdf", "docx", "png", "jpg", "jpeg"]
 python main.py
 ```
 
-Backend will run on `http://localhost:8000`
-- API Docs: `http://localhost:8000/api/docs`
-- ReDoc: `http://localhost:8000/api/redoc`
+Backend will run on the host/port configured for your environment.
+- API Docs: `/api/docs`
+- ReDoc: `/api/redoc`
 
 ### 5. Frontend Setup
 
@@ -165,8 +178,8 @@ AgentEd/
 │   ├── public/                # Static assets
 │   ├── package.json           # Node dependencies
 │   └── tsconfig.json
-├── chroma_db/                 # Vector database (auto-created)
-├── mongodb/                   # MongoDB data (if local)
+├── chroma_db/                 # Legacy local vector data (not used in cloud runtime)
+├── mongodb/                   # Legacy local Mongo files (not used in cloud runtime)
 ├── requirements.txt           # Root Python dependencies
 └── README.md                  # This file
 ```
@@ -174,7 +187,6 @@ AgentEd/
 ## API Endpoints
 
 ### Authentication
-- `POST /api/v1/auth/register` - User registration
 - `POST /api/v1/auth/login` - Login & get JWT token
 
 ### Chat & Learning
@@ -196,7 +208,7 @@ AgentEd/
 ### Feedback
 - `GET /api/v1/feedback/analysis` - Get performance analysis
 
-Full API documentation available at `http://localhost:8000/api/docs` when backend is running.
+Full API documentation is available at `/api/docs` when backend is running.
 
 ## Development
 
@@ -227,11 +239,11 @@ pnpm lint
 
 ### MongoDB Connection Error
 ```
-Error: Cannot connect to MongoDB at mongodb://localhost:27017
+Error: Cannot connect to MongoDB Atlas cluster
 ```
 **Solution**: 
-- Ensure MongoDB is running: `mongod`
-- Or update `MONGODB_URI` in `.env` to use MongoDB Atlas: `mongodb+srv://user:pass@cluster.mongodb.net/`
+- Verify `MONGODB_URI` in `backend/.env` uses a valid Atlas URI.
+- Verify Atlas network access and database user credentials.
 
 ### API Key Errors
 ```
@@ -321,7 +333,7 @@ For issues and questions:
 1. Check the troubleshooting section above
 2. Verify all API keys are correctly set in `.env`
 3. Ensure MongoDB and all services are running
-4. Check the API documentation at `http://localhost:8000/api/docs`
+4. Check the API documentation at `/api/docs`
 
 ---
 

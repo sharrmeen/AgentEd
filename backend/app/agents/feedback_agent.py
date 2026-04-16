@@ -25,6 +25,7 @@ from langchain_core.output_parsers import PydanticOutputParser
 from app.agents.orchestration.state import AgentEdState
 from app.services.planner_service import PlannerService
 from app.services.retrieval import RetrievalService
+from app.services.user_service import UserService
 
 from dotenv import load_dotenv
 
@@ -90,15 +91,32 @@ def get_student_progress(user_id: str, subject_id: str) -> str:
 
 
 @tool
-def retrieve_weak_topic_materials(topic: str, user_id: str, subject: str = None) -> str:
+async def retrieve_weak_topic_materials(
+    topic: str,
+    user_id: str,
+    subject: str = None,
+    class_id: str = None,
+    teacher_id: str = None,
+    subject_id: str = None
+) -> str:
     """Retrieve curriculum materials for weak areas to provide targeted revision."""
     try:
         retrieval_service = RetrievalService()
+
+        if not class_id or not teacher_id:
+            user = await UserService.get_user_by_id(ObjectId(user_id))
+            if user:
+                class_id = class_id or user.class_id
+                if user.role == "teacher":
+                    teacher_id = teacher_id or user_id
         
         results = retrieval_service.query(
             question=f"Detailed explanation of {topic}",
             user_id=user_id,
+            class_id=class_id,
+            teacher_id=teacher_id,
             subject=subject,
+            subject_id=subject_id,
             k=5
         )
         
@@ -160,6 +178,8 @@ async def feedback_agent_node(state: AgentEdState) -> Dict:
     print("--- 💬 FEEDBACK AGENT: Working... ---")
     
     user_id = state["user_id"]
+    class_id = state.get("class_id")
+    role = state.get("role")
     subject_id = state.get("subject_id")
     
     quiz_questions = state.get("quiz", [])
@@ -210,6 +230,12 @@ Your responsibilities:
 4. Provide targeted, material-linked revision suggestions
 5. Offer context-aware motivational messaging
 6. Suggest concrete next steps for improvement
+
+Use this context for tool calls:
+- user_id: {user_id}
+- subject_id: {subject_id}
+- class_id: {class_id}
+- teacher_id: {user_id if role == 'teacher' else None}
 
 Generate comprehensive, encouraging, and actionable feedback."""
 

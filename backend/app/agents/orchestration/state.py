@@ -19,6 +19,8 @@ class AgentEdState(TypedDict, total=False):
     # USER CONTEXT
     # ============================
     user_id: str
+    class_id: Optional[str]
+    role: Optional[str]
     user_query: str
     intent: str  # 'answer' | 'explain' | 'summarize'
     
