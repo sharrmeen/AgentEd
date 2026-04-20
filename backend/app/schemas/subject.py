@@ -5,7 +5,7 @@ Subject schemas for CRUD operations.
 """
 
 from datetime import datetime
-from typing import Optional, Dict, List, Any
+from typing import Optional, List
 from pydantic import BaseModel, Field
 
 
@@ -21,6 +21,10 @@ class SubjectCreate(BaseModel):
         max_length=100,
         description="Subject name (e.g., 'Biology', 'Physics')"
     )
+    class_ids: List[str] = Field(
+        default=[],
+        description="Class assignments for teacher-created subjects"
+    )
 
 
 class SubjectUpdate(BaseModel):
@@ -29,34 +33,15 @@ class SubjectUpdate(BaseModel):
     status: Optional[str] = None
 
 
-# ============================
-# RESPONSE SCHEMAS
-# ============================
-
-class ChapterInfo(BaseModel):
-    """Chapter information from study plan."""
-    chapter_number: int
-    title: str
-    objectives: List[str] = []
-    estimated_hours: float = 0.0
-
-
-class PlanSummary(BaseModel):
-    """Summary of study plan."""
-    total_chapters: int = 0
-    total_hours: float = 0.0
-    target_days: int = 0
-    chapters: List[ChapterInfo] = []
-
-
 class SubjectResponse(BaseModel):
     """Subject response."""
     id: str
+    class_ids: List[str] = []
     subject_name: str
     syllabus_id: Optional[str] = None
     status: str = "created"
-    plan: Optional[Dict[str, Any]] = None
-    plan_summary: Optional[PlanSummary] = None
+    
+    
     created_at: datetime
     updated_at: datetime
 

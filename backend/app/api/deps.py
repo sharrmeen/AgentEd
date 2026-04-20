@@ -142,6 +142,45 @@ async def get_current_active_user(
     return current_user
 
 
+def normalize_role(role: str | None) -> str:
+    """Normalize role values so checks stay case-insensitive across the stack."""
+    return (role or "student").strip().lower()
+
+
+def require_roles(*allowed_roles: str):
+    """Create a dependency that enforces one of the allowed roles."""
+    normalized_allowed = {normalize_role(role) for role in allowed_roles}
+
+    async def _require(current_user: dict = Depends(get_current_user)) -> dict:
+        role = normalize_role(current_user.get("role"))
+        if role not in normalized_allowed:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Forbidden for this role"
+            )
+        return current_user
+
+    return _require
+
+
+async def get_current_admin_user(
+    current_user: dict = Depends(require_roles("admin"))
+) -> dict:
+    return current_user
+
+
+async def get_current_teacher_user(
+    current_user: dict = Depends(require_roles("teacher"))
+) -> dict:
+    return current_user
+
+
+async def get_current_student_user(
+    current_user: dict = Depends(require_roles("student"))
+) -> dict:
+    return current_user
+
+
 async def get_optional_user(
     request: Request,
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(
@@ -186,4 +225,9 @@ def to_object_id(id_str: str) -> ObjectId:
 
 def get_user_id(current_user: dict = Depends(get_current_user)) -> ObjectId:
     """Get current user's ObjectId."""
+    return ObjectId(current_user["id"])
+
+
+def get_student_user_id(current_user: dict = Depends(get_current_student_user)) -> ObjectId:
+    """Get current student's ObjectId."""
     return ObjectId(current_user["id"])

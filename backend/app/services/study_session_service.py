@@ -95,8 +95,9 @@ class StudySessionService:
                 f"Invalid chapter number. Plan has {total_chapters} chapters."
             )
         
-        # Get chapter title from plan
-        chapters = subject.plan.get("chapters", [])
+        # Get chapter title from planner metadata
+        plan_metadata = planner.get("plan_metadata", {}) if isinstance(planner, dict) else {}
+        chapters = plan_metadata.get("chapters", [])
         chapter_info = next(
             (ch for ch in chapters if ch.get("chapter_number") == chapter_number),
             None
@@ -105,7 +106,7 @@ class StudySessionService:
         if not chapter_info:
             raise ValueError(f"Chapter {chapter_number} not found in study plan")
         
-        chapter_title = chapter_info.get("chapter_title", f"Chapter {chapter_number}")
+        chapter_title = chapter_info.get("title", f"Chapter {chapter_number}")
         
         # -----------------------------
         # 5️⃣ Create or Update Session (Atomically)

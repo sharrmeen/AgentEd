@@ -7,7 +7,6 @@ from typing import Optional, Dict, List
 from app.core.database import db
 from app.core.models.planner import PlannerState
 from app.services.subject_service import SubjectService
-from app.services.syllabus_service import SyllabusService
 
 
 class PlannerService:
@@ -29,6 +28,30 @@ class PlannerService:
     """
 
     # ============================
+    # GET PLANNER STATE
+    # ============================
+
+    @staticmethod
+    async def get_planner_state(
+        *,
+        user_id: ObjectId,
+        subject_id: ObjectId
+    ) -> Optional[PlannerState]:
+        """
+        Retrieve the current planner state for a user and subject.
+        """
+        planner_col = db.planner_state()
+        planner_doc = await planner_col.find_one({
+            "user_id": user_id,
+            "subject_id": subject_id
+        })
+        
+        if not planner_doc:
+            return None
+            
+        return PlannerState(**planner_doc)
+
+    # ============================
     # GENERATE PLAN
     # ============================
 
@@ -46,7 +69,6 @@ class PlannerService:
         
         Sets deadline for each chapter based on estimated hours.
         """
-        subjects_col = db.subjects()
         syllabus_col = db.syllabus()
         planner_col = db.planner_state()
         
@@ -82,13 +104,6 @@ class PlannerService:
             target_days=target_days,
             daily_hours=daily_hours,
             user_preferences=preferences or {}
-        )
-        
-        # Store plan in Subject
-        await SubjectService.update_plan(
-            user_id=user_id,
-            subject_id=subject_id,
-            plan=plan_output
         )
         
         # Calculate chapter deadlines
@@ -148,6 +163,7 @@ class PlannerService:
             # Recommendations
             "next_suggestion": f"Start with Chapter 1: {first_chapter_title}",
             "study_pace": "on_track",
+            "plan_metadata": plan_output, # NEW: STORE PLAN OUTPUT DIRECTLY IN PLANNER STATE
             
             "created_at": datetime.utcnow(),
             "updated_at": datetime.utcnow(),
@@ -184,7 +200,6 @@ class PlannerService:
         }
         """
         planner_col = db.planner_state()
-        subjects_col = db.subjects()
         
         planner = await planner_col.find_one({
             "user_id": user_id,
@@ -233,6 +248,7 @@ class PlannerService:
             
             # Update main planner state
             completion_percent = (len(completed_chapters) / planner["total_chapters"]) * 100
+            current_chapter = max(completed_chapters) if completed_chapters else 1
             
             await planner_col.update_one(
                 {"_id": planner["_id"]},
@@ -240,6 +256,7 @@ class PlannerService:
                     "$set": {
                         f"chapter_progress.{ch_key}": chapter_progress,
                         "completed_chapters": completed_chapters,
+                        "current_chapter": current_chapter,
                         "completion_percent": round(completion_percent, 2),
                         "updated_at": datetime.utcnow()
                     }
@@ -347,13 +364,6 @@ class PlannerService:
             user_preferences={}
         )
         
-        # Update Subject plan
-        await SubjectService.update_plan(
-            user_id=user_id,
-            subject_id=subject_id,
-            plan=new_plan_output
-        )
-        
         # Recalculate chapter deadlines for REMAINING chapters
         new_chapters = new_plan_output["chapters"]
         chapter_progress = planner.get("chapter_progress", {})
@@ -397,6 +407,7 @@ class PlannerService:
             {"_id": planner["_id"]},
             {
                 "$set": {
+                    "plan_metadata": new_plan_output,
                     "chapter_progress": chapter_progress,
                     "missed_deadlines": missed_deadlines,
                     "last_replanned_at": datetime.utcnow(),
@@ -526,6 +537,7 @@ class PlannerService:
         
         # Update
         completion_percent = (len(completed_chapters) / planner["total_chapters"]) * 100
+        current_chapter = max(completed_chapters) if completed_chapters else 1
         
         await planner_col.update_one(
             {"_id": planner["_id"]},
@@ -533,6 +545,7 @@ class PlannerService:
                 "$set": {
                     f"chapter_progress.{ch_key}": chapter_progress,
                     "completed_chapters": completed_chapters,
+                    "current_chapter": current_chapter,
                     "completion_percent": round(completion_percent, 2),
                     "updated_at": datetime.utcnow()
                 }
@@ -541,26 +554,6 @@ class PlannerService:
         
         updated = await planner_col.find_one({"_id": planner["_id"]})
         return PlannerState(**updated)
-
-    # ============================
-    # GET PLANNER STATE
-    # ============================
-
-    @staticmethod
-    async def get_planner_state(
-        *,
-        user_id: ObjectId,
-        subject_id: ObjectId
-    ) -> Optional[PlannerState]:
-        """Retrieve planner state."""
-        planner_col = db.planner_state()
-        
-        doc = await planner_col.find_one({
-            "user_id": user_id,
-            "subject_id": subject_id
-        })
-        
-        return PlannerState(**doc) if doc else None
 
     # ============================
     # MANUAL REGENERATE

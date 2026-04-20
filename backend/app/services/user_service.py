@@ -31,6 +31,17 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 class UserService:
     """User management service."""
+
+    @staticmethod
+    async def _validate_class_exists(class_id: str) -> None:
+        """Ensure provided class_id points to an existing class document."""
+        normalized_class_id = class_id.strip()
+        if not ObjectId.is_valid(normalized_class_id):
+            raise ValueError("Invalid class ID format")
+
+        class_doc = await db.classes().find_one({"_id": ObjectId(normalized_class_id)})
+        if not class_doc:
+            raise ValueError("Class not found")
     
     # ============================
     # AUTHENTICATION
@@ -64,6 +75,9 @@ class UserService:
             normalized_class_id = None
         elif normalized_role == "student" and not normalized_class_id:
             normalized_class_id = None
+
+        if normalized_role == "student" and normalized_class_id:
+            await UserService._validate_class_exists(normalized_class_id)
         
         # Hash password
         password_hash = pwd_context.hash(user_data.password)
@@ -293,6 +307,9 @@ class UserService:
             raise ValueError("Class assignment is only allowed for students")
 
         normalized_class_id = class_id.strip() if class_id else None
+
+        if normalized_class_id:
+            await UserService._validate_class_exists(normalized_class_id)
 
         await users_col.update_one(
             {"_id": user_id},

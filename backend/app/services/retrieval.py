@@ -78,12 +78,13 @@ class RetrievalService:
         else:
             filter_clauses.append({"user_id": {"$eq": user_id_str}})
 
-        if subject:
+        # Prefer stable template identifier when available.
+        if subject_id:
+            filter_clauses.append({"subject_id": {"$eq": str(subject_id)}})
+        elif subject:
             filter_clauses.append({"subject": {"$eq": subject}})
         if teacher_id:
             filter_clauses.append({"teacher_id": {"$eq": str(teacher_id)}})
-        if subject_id:
-            filter_clauses.append({"subject_id": {"$eq": str(subject_id)}})
 
         # Only use $and if we have multiple filter clauses
         # ChromaDB requires $and to have at least 2 conditions
@@ -123,7 +124,6 @@ class RetrievalService:
             print(
                 "     Metadata: "
                 f"subject={metadata.get('subject')}, "
-
                 f"user_id={metadata.get('user_id')}, "
                 f"class_id={metadata.get('class_id')}"
             )

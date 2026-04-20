@@ -67,12 +67,11 @@ class IngestionService:
     ):
         self.embedding_model = get_embedding_model()
 
-        
         # Metadata context
         self.subject = subject
         self.chapter = chapter
         self.user_id = str(user_id) if user_id else None
-        self.class_id = class_id
+        self.class_id = str(class_id) if class_id else None
         self.teacher_id = str(teacher_id) if teacher_id else None
         self.subject_id = str(subject_id) if subject_id else None
         self.role = role
@@ -277,7 +276,7 @@ class IngestionService:
     async def _process_pdf_page_async(self, image, page_num, file_path, temp_dir):
         """
         Async helper to process a single PDF page.
-        Returns a Document if successful, None otherwise.
+        Returns a Document if successful, raises Exception otherwise.
         """
         try:
             print(f"Processing page {page_num}...")
@@ -443,13 +442,42 @@ class IngestionService:
             if text.startswith("passage: "):
                 text = text[9:]
 
+            # Flatten metadata: Pinecone upsert_records only accepts scalar values
+            # per field — no nested dicts allowed. All fields must be top-level.
+            flattened_metadata = {}
+            for key, value in chunk.metadata.items():
+                if value is None:
+                    continue
+                elif isinstance(value, (str, int, float, bool)):
+                    flattened_metadata[key] = value
+                elif isinstance(value, list):
+                    # Keep lists but ensure items are scalars
+                    flattened_metadata[key] = [
+                        str(v) if not isinstance(v, (str, int, float, bool)) else v
+                        for v in value
+                    ]
+                elif isinstance(value, dict):
+                    # Flatten one level to preserve useful metadata without nested objects
+                    for sub_key, sub_value in value.items():
+                        if isinstance(sub_value, (str, int, float, bool)):
+                            flattened_metadata[f"{key}_{sub_key}"] = sub_value
+                else:
+                    # Skip unsupported types
+                    continue
+
+            # Pass metadata as a flat dict — PineconeService._normalize_records will
+            # merge these fields directly into the top-level record (no "metadata" key).
             records.append(
                 {
                     "_id": chunk.metadata["chunk_id"],
-                    "text": text,
-                    "metadata": chunk.metadata,
+                    "chunk_text": text,
+                    "metadata": flattened_metadata,
                 }
             )
+
+        if records:
+            print(f"🔍 Sample record _id: {records[0]['_id']}")
+            print(f"🔍 Sample record metadata: {records[0]['metadata']}")
 
         db.upsert_text_records(records)
         print("Database saved successfully (Pinecone upsert_records).")

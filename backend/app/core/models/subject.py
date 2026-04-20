@@ -10,11 +10,10 @@ from .base import MongoBaseModel, PyObjectId
 
 class Subject(MongoBaseModel):
     user_id: PyObjectId
+    class_ids: List[PyObjectId] = []
 
     subject_name: str                 # "Biology"
     syllabus_id: Optional[PyObjectId] = None  # FK → syllabus._id
-
-    plan: Optional[Dict] = None       # Planner output (chapters, order, etc.)
 
     status: str = "created"  # created | syllabus_uploaded | planned | in_progress | completed | archived
 

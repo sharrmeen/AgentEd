@@ -1,7 +1,7 @@
 # models/planner.py
 
 from datetime import datetime
-from typing import List, Dict
+from typing import List, Dict, Any
 from .base import MongoBaseModel, PyObjectId
 from pydantic import BaseModel
 
@@ -37,6 +37,9 @@ class PlannerState(MongoBaseModel):
     # Chapter-level progress (NEW)
     chapter_progress: Dict[str, Dict] = {}  # key: "1", "2", etc.
     # Structure: {"1": {"completed_objectives": [...], "deadline": datetime, ...}}
+
+    # Canonical generated plan payload (chapters/meta/objectives)
+    plan_metadata: Dict[str, Any] = {}
     
     # Auto-replanning (NEW)
     last_replanned_at: datetime | None = None

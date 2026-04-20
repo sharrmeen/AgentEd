@@ -19,7 +19,6 @@ from langchain_core.output_parsers import PydanticOutputParser
 
 from app.agents.orchestration.state import AgentEdState
 from app.services.planner_service import PlannerService
-from app.services.subject_service import SubjectService
 from app.services.syllabus_service import SyllabusService
 
 from dotenv import load_dotenv
@@ -235,17 +234,10 @@ def generate_study_plan(user_id: str, subject_id: str, target_days: int = 30, da
                 daily_hours=daily_hours
             )
         )
-        
-        subject = asyncio.run(
-            SubjectService.get_subject_by_id(
-                user_id=ObjectId(user_id),
-                subject_id=ObjectId(subject_id)
-            )
-        )
-        
+
         # Handle both Pydantic model and dict
-        subject_plan = subject.plan if hasattr(subject, 'plan') else subject.get('plan', {})
-        chapters = subject_plan.get("chapters", []) if isinstance(subject_plan, dict) else []
+        plan_metadata = result.plan_metadata if hasattr(result, 'plan_metadata') else result.get('plan_metadata', {})
+        chapters = plan_metadata.get("chapters", []) if isinstance(plan_metadata, dict) else []
         chapter_list = "\n".join([
             f"Chapter {ch['chapter_number']}: {ch['title']} ({ch['estimated_hours']}h)"
             for ch in chapters

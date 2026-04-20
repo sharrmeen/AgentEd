@@ -176,6 +176,11 @@ async def init_indexes():
     )
 
     # ---------- subjects ----------
+    try:
+        await dbi["subjects"].drop_index("unique_user_class_subject")
+    except Exception:
+        pass
+
     await dbi["subjects"].create_index(
         [("user_id", ASCENDING), ("subject_name", ASCENDING)],
         unique=True,

@@ -22,6 +22,7 @@ from langchain_core.output_parsers import PydanticOutputParser
 
 from app.agents.orchestration.state import AgentEdState
 from app.services.retrieval import RetrievalService
+from app.services.planner_service import PlannerService
 from app.services.subject_service import SubjectService
 from app.services.user_service import UserService
 
@@ -69,7 +70,7 @@ class QuizOutput(BaseModel):
 # HELPER FUNCTIONS (used directly by agent)
 # ============================
 
-async def _get_quiz_content(topic: str, user_id: str, subject: str = None, chapter: str = None, class_id: str = None) -> str:
+async def _get_quiz_content(topic: str, user_id: str, subject: str = None, chapter: str = None, class_id: str = None, subject_id: str = None) -> str:
     """Helper to retrieve quiz content."""
     try:
         retrieval_service = RetrievalService()
@@ -79,6 +80,7 @@ async def _get_quiz_content(topic: str, user_id: str, subject: str = None, chapt
             user_id=user_id,
             class_id=class_id,
             subject=subject,
+            subject_id=subject_id,
             chapter=chapter,
             k=10
         )
@@ -100,15 +102,16 @@ async def _get_quiz_content(topic: str, user_id: str, subject: str = None, chapt
 async def _get_objectives(subject_id: str, user_id: str, chapter_number: int) -> str:
     """Helper to get chapter learning objectives."""
     try:
-        subject = await SubjectService.get_subject_by_id(
+        planner_state = await PlannerService.get_planner_state(
             user_id=ObjectId(user_id),
             subject_id=ObjectId(subject_id)
         )
         
-        if not subject or not subject.plan:
+        if not planner_state or not getattr(planner_state, "plan_metadata", None):
             return "No learning objectives found."
         
-        chapters = subject.plan.get("chapters", [])
+        plan = planner_state.plan_metadata
+        chapters = plan.get("chapters", [])
         chapter = next(
             (ch for ch in chapters if ch.get("chapter_number") == chapter_number),
             None
@@ -129,7 +132,7 @@ async def _get_objectives(subject_id: str, user_id: str, chapter_number: int) ->
 # ============================
 
 @tool
-def retrieve_quiz_content(topic: str, user_id: str, subject: str = None, chapter: str = None, class_id: str = None) -> str:
+def retrieve_quiz_content(topic: str, user_id: str, subject: str = None, chapter: str = None, class_id: str = None, subject_id: str = None) -> str:
     """Retrieve curriculum content for quiz generation. Required before creating questions."""
     try:
         retrieval_service = RetrievalService()
@@ -139,6 +142,7 @@ def retrieve_quiz_content(topic: str, user_id: str, subject: str = None, chapter
             user_id=user_id,
             class_id=class_id,
             subject=subject,
+            subject_id=subject_id,
             chapter=chapter,
             k=10
         )
@@ -162,18 +166,19 @@ def get_learning_objectives(subject_id: str, user_id: str, chapter_number: int) 
     """Get chapter learning objectives to ground quiz questions in curriculum."""
     try:
         import asyncio
-        
-        subject = asyncio.run(
-            SubjectService.get_subject_by_id(
+
+        planner_state = asyncio.run(
+            PlannerService.get_planner_state(
                 user_id=ObjectId(user_id),
                 subject_id=ObjectId(subject_id)
             )
         )
-        
-        if not subject or not subject.plan:
+
+        plan = getattr(planner_state, "plan_metadata", None)
+        if not plan:
             return "No learning objectives found."
-        
-        chapters = subject.plan.get("chapters", [])
+
+        chapters = plan.get("chapters", [])
         chapter = next(
             (ch for ch in chapters if ch.get("chapter_number") == chapter_number),
             None
@@ -217,16 +222,23 @@ async def quiz_agent_node(state: AgentEdState) -> Dict:
     try:
         # Get subject context
         subject = None
+        planner_state = None
         chapter_title = None
         if subject_id:
             subject = await SubjectService.get_subject_by_id(
                 user_id=ObjectId(user_id),
                 subject_id=ObjectId(subject_id)
             )
-            
+
+            planner_state = await PlannerService.get_planner_state(
+                user_id=ObjectId(user_id),
+                subject_id=ObjectId(subject_id)
+            )
+
             # Get the actual chapter title from the plan
-            if subject and subject.plan and chapter_number:
-                chapters = subject.plan.get("chapters", [])
+            plan = getattr(planner_state, "plan_metadata", None)
+            if plan and chapter_number:
+                chapters = plan.get("chapters", [])
                 chapter_data = next(
                     (ch for ch in chapters if ch.get("chapter_number") == chapter_number),
                     None
@@ -250,7 +262,8 @@ async def quiz_agent_node(state: AgentEdState) -> Dict:
             user_id=user_id,
             subject=subject.subject_name if subject else None,
             chapter=chapter_filter,
-            class_id=class_id
+            class_id=class_id,
+            subject_id=subject_id
         )
         
         # If no content found with chapter title, try without chapter filter
@@ -261,7 +274,8 @@ async def quiz_agent_node(state: AgentEdState) -> Dict:
                 user_id=user_id,
                 subject=subject.subject_name if subject else None,
                 chapter=None,
-                class_id=class_id
+                class_id=class_id,
+                subject_id=subject_id
             )
         
         # Get learning objectives

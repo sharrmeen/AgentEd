@@ -8,6 +8,7 @@ from fastapi import APIRouter, HTTPException, status, Depends, UploadFile, File
 from bson import ObjectId
 
 from app.services.syllabus_service import SyllabusService
+from app.services.class_service import ClassService
 from app.services.upload_service import UploadService
 from app.services.ingestion import IngestionService
 from app.services.subject_service import SubjectService
@@ -76,6 +77,44 @@ async def upload_syllabus(
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Subject not found"
+            )
+
+        subject_class_ids = [str(cid) for cid in getattr(subject, "class_ids", [])]
+        if not subject_class_ids:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Assign at least one class to this subject before uploading content",
+            )
+
+        if not effective_class_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="class_id is required for uploads",
+            )
+
+        if not ObjectId.is_valid(effective_class_id):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid class ID format",
+            )
+
+        class_doc = await ClassService.get_class_by_id(ObjectId(effective_class_id))
+        if not class_doc:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Class not found",
+            )
+
+        if role == "teacher" and class_doc.get("teacher_id") != user_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You can only upload content to your own classes",
+            )
+
+        if effective_class_id not in subject_class_ids:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Selected class is not assigned to this subject",
             )
 
         # Upload file

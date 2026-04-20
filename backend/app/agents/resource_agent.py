@@ -81,7 +81,7 @@ def cache_lookup(user_id: str, session_id: str, question: str, intent: str = "an
 
 
 # Helper function - NOT a tool (called directly, not by agent)
-def rag_retriever(user_id: str, question: str, subject: str = None, class_id: str = None) -> str:
+def rag_retriever(user_id: str, question: str, subject: str = None, class_id: str = None, subject_id: str = None) -> str:
     """
     Retrieve information from uploaded notes and study materials.
     
@@ -93,6 +93,7 @@ def rag_retriever(user_id: str, question: str, subject: str = None, class_id: st
         log_print(f"   question: {question}")
         log_print(f"   subject: {subject}")
         log_print(f"   class_id: {class_id}")
+        log_print(f"   subject_id: {subject_id}")
         
         retrieval_service = RetrievalService()
         
@@ -103,6 +104,7 @@ def rag_retriever(user_id: str, question: str, subject: str = None, class_id: st
             user_id=user_id,
             class_id=class_id,
             subject=subject,  # Filter by subject if provided
+            subject_id=subject_id,
             chapter=None,  # Search all chapters within subject
             k=5
         )
@@ -120,14 +122,14 @@ def rag_retriever(user_id: str, question: str, subject: str = None, class_id: st
             
             # Extract meaningful source info
             source_file = metadata.get('source_file', 'Unknown')
-            subject = metadata.get('subject', 'Unknown')
+            metadata_subject = metadata.get('subject', 'Unknown')
             chapter = metadata.get('chapter', 'Unknown')
             confidence = doc.get('confidence', 0)
             
-            log_print(f"   Source {i}: {subject} - {chapter} - {source_file} (confidence: {confidence:.2f})")
+            log_print(f"   Source {i}: {metadata_subject} - {chapter} - {source_file} (confidence: {confidence:.2f})")
             
             formatted.append(
-                f"Source {i} (From {subject}, {chapter} - Confidence: {confidence:.2f}):\n"
+                f"Source {i} (From {metadata_subject}, {chapter} - Confidence: {confidence:.2f}):\n"
                 f"{content}\n"
                 f"[File: {source_file}]"
             )
@@ -307,7 +309,8 @@ Minimize tool calls - stop as soon as you have enough information."""
                 user_id=user_id,
                 question=question,
                 subject=subject_name,
-                class_id=class_id
+                class_id=class_id,
+                subject_id=subject_id
             )
             log_print(f"  RAG result length: {len(rag_result) if rag_result else 0}")
             
@@ -450,58 +453,116 @@ Provide a comprehensive answer based on the context above.""")
         }
 
 
+# def _get_intent_prompt(intent: str, question: str, subject: str) -> str:
+#     """
+#     Get intent-specific instruction prompt.
+    
+#     Single agent, different behaviors based on intent:
+#     - 'explain': Educational explanation with structure
+#     - 'summarize': Concise summary with key points
+#     - 'answer': Comprehensive structured answer (default)
+#     """
+    
+#     if intent == "explain":
+#         return f"""YOUR TASK: Explain the concept: "{question}"
+
+# RESPONSE FORMAT:
+# 1. **Definition/Introduction** - What is this concept?
+# 2. **Why Do We Need This?** - Purpose and importance
+# 3. **Core Idea** - Main principle in simple terms
+# 4. **How It Works** - Step-by-step explanation
+# 5. **Real-Life Example** - Practical illustration
+# 6. **Key Takeaways** - Summary points to remember
+
+# STYLE: Clear, educational, suitable for learning {subject}
+# LENGTH: 300-500 words
+# TONE: Friendly and encouraging"""
+    
+#     elif intent == "summarize":
+#         return f"""YOUR TASK: Summarize: "{question}"
+
+# RESPONSE FORMAT:
+# 1. **Overview** - What is this about? (1-2 sentences)
+# 2. **Key Points** - 3-5 main ideas
+# 3. **Important Details** - Critical information
+# 4. **Connections** - How it relates to {subject}
+# 5. **Quick Summary** - Brief one-line conclusion
+
+# STYLE: Concise and comprehensive
+# LENGTH: 150-300 words
+# TONE: Direct and informative"""
+    
+#     else:  # answer (default)
+#         return f"""YOUR TASK: Answer the question: "{question}"
+
+# RESPONSE FORMAT:
+# 1. **Definition / Introduction** - What the topic is
+# 2. **Why Do We Need This?** - Purpose and importance
+# 3. **Core Idea / Key Concept** - Main principle
+# 4. **Structure / Components / Architecture** - Parts involved
+# 5. **Working / How It Works** - Step-by-step explanation
+# 6. **Advantages** - Benefits and strengths
+# 7. **Disadvantages / Limitations** - Drawbacks
+# 8. **Example / Real-Life Illustration** - Practical example
+
+# STYLE: Comprehensive and structured
+# LENGTH: 400-600 words
+# TONE: Educational and detailed"""
 def _get_intent_prompt(intent: str, question: str, subject: str) -> str:
     """
-    Get intent-specific instruction prompt.
+    Get intent-specific instruction prompt for an academic study assistant.
     
-    Single agent, different behaviors based on intent:
-    - 'explain': Educational explanation with structure
-    - 'summarize': Concise summary with key points
-    - 'answer': Comprehensive structured answer (default)
+    Distinct behaviors based on student learning needs:
+    - 'explain': The friendly tutor (analogies, conceptual breakdown).
+    - 'summarize': The exam cheat-sheet (flashcard style, high-yield facts).
+    - 'answer': The A+ exam response (formal, comprehensive, structured).
     """
     
     if intent == "explain":
-        return f"""YOUR TASK: Explain the concept: "{question}"
+        return f"""YOUR TASK: Demystify and teach the concept: "{question}"
+
+ROLE: You are an exceptionally patient and brilliant academic tutor helping a student grasp {subject}. Your goal is comprehension, not memorization.
 
 RESPONSE FORMAT:
-1. **Definition/Introduction** - What is this concept?
-2. **Why Do We Need This?** - Purpose and importance
-3. **Core Idea** - Main principle in simple terms
-4. **How It Works** - Step-by-step explanation
-5. **Real-Life Example** - Practical illustration
-6. **Key Takeaways** - Summary points to remember
+1. **Real-World Analogy** - Create a concrete, everyday scenario to represent the concept. Explicitly map the parts of your analogy to the abstract concept (e.g., "If the cell is a factory, the mitochondria is the power plant because...").
+2. **Step-by-Step Breakdown** - Explain the core mechanics in plain, conversational English. Imagine you are explaining it to someone who has zero prior knowledge of the topic. 
+3. **The Academic Bridge** - Now, introduce the formal vocabulary. Connect the simple terms you used in your analogy and breakdown directly to the correct academic jargon they will see on a test.
+4. **Common Student Pitfall** - Identify one specific, realistic misunderstanding students frequently have about this topic and clearly explain why it's incorrect.
 
-STYLE: Clear, educational, suitable for learning {subject}
+STYLE: Conversational, pedagogical, and encouraging. Use bullet points and bold text to separate ideas.
+CONSTRAINT: Strictly avoid dense textbook jargon in sections 1 and 2. Ease them into the complexity.
 LENGTH: 300-500 words
-TONE: Friendly and encouraging"""
+TONE: Supportive, accessible, and clear"""
     
     elif intent == "summarize":
-        return f"""YOUR TASK: Summarize: "{question}"
+        return f"""YOUR TASK: Provide high-yield revision notes for: "{question}"
+
+ROLE: You are generating an elite, rapid-review study guide for a student cramming for a {subject} exam. 
 
 RESPONSE FORMAT:
-1. **Overview** - What is this about? (1-2 sentences)
-2. **Key Points** - 3-5 main ideas
-3. **Important Details** - Critical information
-4. **Connections** - How it relates to {subject}
-5. **Quick Summary** - Brief one-line conclusion
+1. **Core Definition** - The strict, 1-2 sentence academic definition. No filler words.
+2. **High-Yield Exam Facts** - 3 to 5 bullet points of the most testable information. Focus on cause-and-effect, core rules, or primary functions.
+3. **Key Vocabulary** - A comma-separated list of 3-5 essential terms the student absolutely must memorize regarding this topic.
+4. **Where It Fits** - 1 brief sentence explaining how this topic connects to the broader subject of {subject}.
 
-STYLE: Concise and comprehensive
-LENGTH: 150-300 words
-TONE: Direct and informative"""
+STYLE: Flashcard-style, ultra-concise, and highly structured. 
+CONSTRAINT: NO introductory paragraphs. NO conversational filler. Give the student exactly what they need to memorize and nothing more.
+LENGTH: 150-250 words
+TONE: Objective, crisp, and intensely focused"""
     
     else:  # answer (default)
-        return f"""YOUR TASK: Answer the question: "{question}"
+        return f"""YOUR TASK: Provide a comprehensive, A-grade academic response to: "{question}"
+
+ROLE: You are an expert university professor outlining a perfect, full-marks exam answer or essay structure for {subject}.
 
 RESPONSE FORMAT:
-1. **Definition / Introduction** - What the topic is
-2. **Why Do We Need This?** - Purpose and importance
-3. **Core Idea / Key Concept** - Main principle
-4. **Structure / Components / Architecture** - Parts involved
-5. **Working / How It Works** - Step-by-step explanation
-6. **Advantages** - Benefits and strengths
-7. **Disadvantages / Limitations** - Drawbacks
-8. **Example / Real-Life Illustration** - Practical example
+1. **Formal Introduction** - Provide a clear, academic definition and define the scope of the topic. Set the stage for a deep dive.
+2. **Core Framework & Mechanisms** - A detailed, logical breakdown of the concept. Depending on the topic, this should detail its components, chronological steps, or structural architecture. 
+3. **Theoretical / Practical Significance** - Analyze why this matters in the broader context of {subject}. Discuss its advantages, limitations, or historical impact. Demonstrate critical thinking.
+4. **Classic Academic Case Study** - Provide a classic textbook example, historical event, or standard practical application that perfectly illustrates the concept in action.
 
-STYLE: Comprehensive and structured
+STYLE: Academic, highly structured, logical, and exhaustive. 
+CONSTRAINT: Maintain a scholarly voice. Use proper, domain-specific terminology throughout. Present the information with the depth and rigor expected of a top-tier student.
 LENGTH: 400-600 words
-TONE: Educational and detailed"""
+TONE: Authoritative, scholarly, and articulate"""
+

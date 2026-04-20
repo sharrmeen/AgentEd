@@ -49,6 +49,7 @@ async def generate_quiz(
     Returns:
         Generated quiz ready to take
     """
+    try:
         subject_obj_id = ObjectId(request.subject_id)
     except Exception:
         raise HTTPException(

@@ -103,6 +103,9 @@ class PlannerStateResponse(BaseModel):
     
     # Chapter progress - flexible dict structure
     chapter_progress: Dict[str, Any] = {}
+
+    # Generated plan structure (source of truth for chapters/objectives)
+    plan_metadata: Dict[str, Any] = {}
     
     # Auto-replanning
     last_replanned_at: Optional[datetime] = None

@@ -30,47 +30,58 @@ class PineconeService:
         pc = Pinecone(api_key=self.api_key)
         return pc.Index(self.index_name)
 
-    @staticmethod
-    def _coerce_metadata(metadata: Any) -> Dict[str, Any]:
-        """Normalize metadata into a Pinecone-compatible dictionary.
-
-        Pinecone expects metadata to be a dict, not a JSON string.
-        Accepted value types are scalar primitives and lists of primitives.
+    def _coerce_metadata(self, metadata: Any) -> Dict[str, Any]:
+        """Normalize metadata into a Pinecone-compatible flat dictionary.
+        
+        Pinecone upsert_records only accepts scalar values (str, int, float, bool)
+        or lists of scalars. Nested dicts are skipped.
         """
         if metadata is None:
             return {}
 
         if isinstance(metadata, str):
             try:
-                parsed = json.loads(metadata)
+                metadata = json.loads(metadata)
             except json.JSONDecodeError as exc:
-                raise ValueError("Pinecone metadata must be a dict, got non-JSON string") from exc
-            if not isinstance(parsed, dict):
-                raise ValueError("Pinecone metadata must be a dict")
-            metadata = parsed
+                raise ValueError("Metadata must be a dict, got non-JSON string") from exc
 
         if not isinstance(metadata, dict):
-            raise ValueError(f"Pinecone metadata must be a dict, got {type(metadata).__name__}")
+            raise ValueError(f"Pinecone metadata must be dict, got {type(metadata).__name__}")
 
-        def _normalize_value(value: Any) -> Any:
+        cleaned = {}
+
+        for key, value in metadata.items():
             if value is None:
-                return None
-            if isinstance(value, (str, int, float, bool)):
-                return value
-            if isinstance(value, list):
-                normalized_list = []
-                for item in value:
-                    if isinstance(item, (str, int, float, bool)) or item is None:
-                        normalized_list.append(item)
-                    else:
-                        normalized_list.append(str(item))
-                return normalized_list
-            return str(value)
+                continue
 
-        return {str(key): _normalize_value(value) for key, value in metadata.items()}
+            if isinstance(value, (str, int, float, bool)):
+                cleaned[str(key)] = value
+
+            elif isinstance(value, list):
+                valid_list = []
+                for item in value:
+                    if isinstance(item, (str, int, float, bool)):
+                        valid_list.append(item)
+                    else:
+                        valid_list.append(str(item))
+                cleaned[str(key)] = valid_list
+
+            elif isinstance(value, dict):
+                # Skip nested dicts — not supported by Pinecone integrated embedding API
+                continue
+
+            else:
+                continue
+
+        return cleaned
 
     def _normalize_records(self, records: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """Validate and normalize records before upserting to Pinecone."""
+        """Validate and normalize records before upserting to Pinecone.
+        
+        Pinecone upsert_records (integrated embedding API) does NOT accept a nested
+        'metadata' key. All fields must be flat top-level scalars or lists.
+        Metadata fields are merged directly into the top-level record.
+        """
         normalized: List[Dict[str, Any]] = []
 
         for record in records:
@@ -81,17 +92,20 @@ class PineconeService:
             if not record_id:
                 raise ValueError("Each Pinecone record must include '_id' or 'id'")
 
-            text = record.get("text")
-            if text is None:
-                text = ""
+            text = record.get("chunk_text") or record.get("text") or ""
 
-            normalized.append(
-                {
-                    "_id": str(record_id),
-                    "text": str(text),
-                    "metadata": self._coerce_metadata(record.get("metadata", {})),
-                }
-            )
+            # Build flat record — Pinecone upsert_records does NOT accept a nested
+            # "metadata" key. Every field must be a top-level scalar or list.
+            normalized_record: Dict[str, Any] = {
+                "_id": str(record_id),
+                "text": str(text),
+            }
+
+            # Merge coerced metadata fields directly into the top-level record
+            coerced = self._coerce_metadata(record.get("metadata", {}))
+            normalized_record.update(coerced)
+
+            normalized.append(normalized_record)
 
         return normalized
 
@@ -100,10 +114,12 @@ class PineconeService:
         records: List[Dict[str, Any]],
         namespace: Optional[str] = None,
     ) -> None:
-        """Upsert records in Pinecone.
+        """Upsert records in Pinecone using the integrated embedding API.
 
-        Expects records in integrated embedding format:
-        [{"_id": "...", "text": "...", "metadata": {...}}, ...]
+        Expects records in the format:
+        [{"_id": "...", "chunk_text": "...", "metadata": {...}}, ...]
+
+        Metadata fields are flattened to top-level before sending to Pinecone.
         """
         if not records:
             return
@@ -125,7 +141,12 @@ class PineconeService:
         metadata_filter: Optional[Dict[str, Any]] = None,
         namespace: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
-        """Search Pinecone and return normalized result objects."""
+        """Search Pinecone and return normalized result objects.
+        
+        Since records are stored with flat top-level fields, metadata fields
+        are read back from hit['fields'] (excluding the reserved 'text' key)
+        and re-wrapped under 'metadata' for the application layer.
+        """
         index = self._get_index()
         ns = namespace or self.namespace
 
@@ -156,20 +177,23 @@ class PineconeService:
         normalized = []
         for hit in hits:
             if isinstance(hit, dict):
-                metadata = hit.get("metadata", {}) or {}
                 record_id = hit.get("_id") or hit.get("id")
                 score = hit.get("_score")
                 if score is None:
                     score = hit.get("score", 0.0)
-                text = hit.get("fields", {}).get("text") or metadata.get("text") or ""
+                # All stored fields (including metadata) come back under "fields"
+                fields = hit.get("fields", {}) or {}
+                text = fields.get("text", "")
+                # Re-wrap non-text fields as metadata for the application layer
+                metadata = {k: v for k, v in fields.items() if k != "text"}
             else:
-                metadata = getattr(hit, "metadata", {}) or {}
                 record_id = getattr(hit, "_id", None) or getattr(hit, "id", None)
                 score = getattr(hit, "_score", None)
                 if score is None:
                     score = getattr(hit, "score", 0.0)
                 fields = getattr(hit, "fields", {}) or {}
-                text = fields.get("text") or metadata.get("text") or ""
+                text = fields.get("text", "")
+                metadata = {k: v for k, v in fields.items() if k != "text"}
 
             normalized.append(
                 {

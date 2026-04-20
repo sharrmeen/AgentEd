@@ -620,8 +620,7 @@ class QuizService:
         total_questions = 0
         total_correct = 0
         for result in results:
-            if "total_questions" in result:
-                total_questions += result["total_questions"]
+            total_questions += len(result.get("question_results", []))
             if "correct_count" in result:
                 total_correct += result["correct_count"]
         
@@ -634,12 +633,16 @@ class QuizService:
         if len(results) >= 3:
             last_three_scores = scores[-3:]
             avg_last_three = sum(last_three_scores) / 3
-            earlier_avg = sum(scores[:-3]) / (len(scores) - 3)
-            
-            if avg_last_three > earlier_avg + 5:
-                recent_trend = "improving"
-            elif avg_last_three < earlier_avg - 5:
-                recent_trend = "declining"
+
+            # Avoid division by zero when there are exactly 3 attempts.
+            earlier_count = len(scores) - 3
+            if earlier_count > 0:
+                earlier_avg = sum(scores[:-3]) / earlier_count
+
+                if avg_last_three > earlier_avg + 5:
+                    recent_trend = "improving"
+                elif avg_last_three < earlier_avg - 5:
+                    recent_trend = "declining"
         
         return {
             "subject_id": str(subject_id),

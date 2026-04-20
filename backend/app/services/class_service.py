@@ -137,17 +137,35 @@ class ClassService:
     async def assign_students(*, class_id: str, student_ids: List[str]) -> int:
         users_col = db.users()
 
+        if not ObjectId.is_valid(class_id):
+            raise ValueError("Invalid class ID format")
+
+        class_doc = await db.classes().find_one({"_id": ObjectId(class_id)})
+        if not class_doc:
+            raise ValueError("Class not found")
+
         valid_object_ids: List[ObjectId] = []
         for student_id in student_ids:
             if not ObjectId.is_valid(student_id):
                 raise ValueError(f"Invalid student ID format: {student_id}")
             valid_object_ids.append(ObjectId(student_id))
 
-        if not valid_object_ids:
-            return 0
+        now = datetime.utcnow()
 
-        result = await users_col.update_many(
-            {"_id": {"$in": valid_object_ids}, "role": "student"},
-            {"$set": {"class_id": class_id, "updated_at": datetime.utcnow()}},
+        # 1) Unassign currently enrolled students that are no longer selected.
+        unassign_filter: dict = {"role": "student", "class_id": class_id}
+        if valid_object_ids:
+            unassign_filter["_id"] = {"$nin": valid_object_ids}
+
+        unassign_result = await users_col.update_many(
+            unassign_filter,
+            {"$set": {"class_id": None, "updated_at": now}},
         )
-        return result.modified_count
+
+        # 2) Assign selected students to this class.
+        assign_result = await users_col.update_many(
+            {"_id": {"$in": valid_object_ids}, "role": "student"} if valid_object_ids else {"_id": {"$in": []}},
+            {"$set": {"class_id": class_id, "updated_at": now}},
+        )
+
+        return unassign_result.modified_count + assign_result.modified_count

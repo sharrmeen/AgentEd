@@ -5,7 +5,7 @@ Class management endpoints for admin and teachers.
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from bson import ObjectId
 
-from app.api.deps import get_current_user
+from app.api.deps import get_current_admin_user, get_current_teacher_user
 from app.core.database import db
 from app.schemas.classroom import (
     ClassCreateRequest,
@@ -24,23 +24,11 @@ from app.services.user_service import UserService
 router = APIRouter()
 
 
-def _ensure_admin(current_user: dict):
-    if current_user.get("role") != "admin":
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
-
-
-def _ensure_teacher(current_user: dict):
-    if current_user.get("role") != "teacher":
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Teacher access required")
-
-
 @router.post("/admin", response_model=ClassResponse, status_code=status.HTTP_201_CREATED)
 async def create_class(
     request: ClassCreateRequest,
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(get_current_admin_user),
 ):
-    _ensure_admin(current_user)
-
     try:
         class_doc = await ClassService.create_class(
             name=request.name,
@@ -73,10 +61,8 @@ async def create_class(
 async def list_classes_for_admin(
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=200),
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(get_current_admin_user),
 ):
-    _ensure_admin(current_user)
-
     classes, total = await ClassService.list_classes(skip=skip, limit=limit)
 
     return ClassListResponse(
@@ -102,10 +88,8 @@ async def list_classes_for_admin(
 async def update_class_for_admin(
     class_id: str,
     request: ClassUpdateRequest,
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(get_current_admin_user),
 ):
-    _ensure_admin(current_user)
-
     if not ObjectId.is_valid(class_id):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid class ID format")
 
@@ -144,10 +128,8 @@ async def update_class_for_admin(
 @router.get("/admin/{class_id}/students", response_model=ClassStudentsResponse)
 async def list_students_for_class_admin(
     class_id: str,
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(get_current_admin_user),
 ):
-    _ensure_admin(current_user)
-
     if not ObjectId.is_valid(class_id):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid class ID format")
 
@@ -177,10 +159,8 @@ async def list_students_for_class_admin(
 async def assign_students_to_class(
     class_id: str,
     request: ClassStudentsAssignRequest,
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(get_current_admin_user),
 ):
-    _ensure_admin(current_user)
-
     if not ObjectId.is_valid(class_id):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid class ID format")
 
@@ -197,8 +177,7 @@ async def assign_students_to_class(
 
 
 @router.get("/teacher/me", response_model=ClassListResponse)
-async def list_classes_for_teacher(current_user: dict = Depends(get_current_user)):
-    _ensure_teacher(current_user)
+async def list_classes_for_teacher(current_user: dict = Depends(get_current_teacher_user)):
 
     classes, total = await ClassService.list_classes(
         teacher_id=ObjectId(current_user["id"]),
@@ -227,10 +206,8 @@ async def list_classes_for_teacher(current_user: dict = Depends(get_current_user
 @router.get("/teacher/me/{class_id}/students", response_model=ClassStudentsResponse)
 async def list_teacher_class_students(
     class_id: str,
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(get_current_teacher_user),
 ):
-    _ensure_teacher(current_user)
-
     if not ObjectId.is_valid(class_id):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid class ID format")
 
@@ -262,10 +239,8 @@ async def list_teacher_class_students(
 @router.get("/teacher/me/{class_id}/progress", response_model=TeacherClassProgressResponse)
 async def teacher_class_progress(
     class_id: str,
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(get_current_teacher_user),
 ):
-    _ensure_teacher(current_user)
-
     if not ObjectId.is_valid(class_id):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid class ID format")
 

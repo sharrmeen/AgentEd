@@ -9,7 +9,6 @@ from bson import ObjectId
 from typing import Optional
 
 from app.services.planner_service import PlannerService
-from app.services.subject_service import SubjectService
 from app.schemas.planner import (
     PlanGenerateRequest,
     PlanResponse,
@@ -18,7 +17,7 @@ from app.schemas.planner import (
     ObjectiveCompleteResponse,
     ChapterProgressResponse
 )
-from app.api.deps import get_user_id
+from app.api.deps import get_student_user_id
 
 router = APIRouter()
 
@@ -27,7 +26,7 @@ router = APIRouter()
 async def generate_plan(
     subject_id: str,
     request: PlanGenerateRequest,
-    user_id: ObjectId = Depends(get_user_id)
+    user_id: ObjectId = Depends(get_student_user_id)
 ):
     """
     Generate a study plan for a subject.
@@ -60,12 +59,6 @@ async def generate_plan(
             preferences=request.preferences
         )
         
-        # Fetch full subject to get plan
-        subject = await SubjectService.get_subject_by_id(
-            user_id=user_id,
-            subject_id=subject_obj_id
-        )
-        
         # Convert planner_state to dict and convert ObjectId fields to strings
         planner_dict = planner_state.dict()
         planner_dict['id'] = str(planner_dict.get('_id', ''))
@@ -73,7 +66,7 @@ async def generate_plan(
         
         return PlanResponse(
             planner_state=PlannerStateResponse(**planner_dict),
-            study_plan=subject.plan if subject else {}
+            study_plan=planner_dict.get("plan_metadata", {})
         )
     
     except ValueError as e:
@@ -92,7 +85,7 @@ async def generate_plan(
 async def regenerate_plan(
     subject_id: str,
     request: PlanGenerateRequest,
-    user_id: ObjectId = Depends(get_user_id)
+    user_id: ObjectId = Depends(get_student_user_id)
 ):
     """
     Regenerate a study plan for a subject (overwrites existing plan).
@@ -128,12 +121,6 @@ async def regenerate_plan(
             preferences=request.preferences
         )
         
-        # Fetch full subject to get plan
-        subject = await SubjectService.get_subject_by_id(
-            user_id=user_id,
-            subject_id=subject_obj_id
-        )
-        
         # Convert planner_state to dict and convert ObjectId fields to strings
         planner_dict = planner_state.dict()
         planner_dict['id'] = str(planner_dict.get('_id', ''))
@@ -141,7 +128,7 @@ async def regenerate_plan(
         
         return PlanResponse(
             planner_state=PlannerStateResponse(**planner_dict),
-            study_plan=subject.plan if subject else {},
+            study_plan=planner_dict.get("plan_metadata", {}),
             message="Study plan regenerated successfully"
         )
     
@@ -160,7 +147,7 @@ async def regenerate_plan(
 @router.get("/{subject_id}", response_model=PlannerStateResponse)
 async def get_plan(
     subject_id: str,
-    user_id: ObjectId = Depends(get_user_id)
+    user_id: ObjectId = Depends(get_student_user_id)
 ):
     """
     Get current study plan for a subject.
@@ -210,7 +197,7 @@ async def get_plan(
 @router.post("/objective/complete", response_model=ObjectiveCompleteResponse)
 async def mark_objective_complete(
     request: ObjectiveCompleteRequest,
-    user_id: ObjectId = Depends(get_user_id)
+    user_id: ObjectId = Depends(get_student_user_id)
 ):
     """
     Mark an objective as complete.
@@ -269,7 +256,7 @@ async def mark_objective_complete(
 async def get_chapter_progress(
     subject_id: str,
     chapter_number: int,
-    user_id: ObjectId = Depends(get_user_id)
+    user_id: ObjectId = Depends(get_student_user_id)
 ):
     """
     Get progress for a specific chapter.
